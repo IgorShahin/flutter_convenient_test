@@ -8,9 +8,18 @@ environment:
 
 dependencies:
   collection: ^1.19.0
-  convenient_test: ^1.5.1
-  convenient_test_common: ^1.5.1
-  convenient_test_common_dart: ^1.5.1
+  convenient_test:
+    git:
+      url: https://github.com/IgorShahin/flutter_convenient_test.git
+      path: packages/convenient_test
+  convenient_test_common:
+    git:
+      url: https://github.com/IgorShahin/flutter_convenient_test.git
+      path: packages/convenient_test_common
+  convenient_test_common_dart:
+    git:
+      url: https://github.com/IgorShahin/flutter_convenient_test.git
+      path: packages/convenient_test_common_dart
   fixnum: ^1.1.1
   flutter:
     sdk: flutter
