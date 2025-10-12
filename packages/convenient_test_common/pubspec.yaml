@@ -19,7 +19,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  lint: ">=2.8.0 <3.0.0"
+  lint: ">=2.7.0 <3.0.0"
 # dependency_overrides:
 #   convenient_test_common_dart:
 #     path: ../convenient_test_common_dart
