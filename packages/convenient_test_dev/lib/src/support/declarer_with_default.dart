@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:test_api/backend.dart';
 // ignore: implementation_imports
 import 'package:test_api/src/backend/declarer.dart';
 
@@ -18,7 +17,7 @@ class DeclarerWithDefault extends Declarer {
     dynamic skip,
     Map<String, dynamic>? onPlatform,
     dynamic tags,
-    TestLocation? location,
+    // TestLocation? location,
     int? retry,
     bool solo = false,
   }) {
@@ -30,7 +29,7 @@ class DeclarerWithDefault extends Declarer {
       skip: skip,
       onPlatform: onPlatform,
       tags: tags,
-      location: location,
+      // location: location,
       // NOTE use this for flaky test retrying, see #16
       retry: retry ?? defaultRetry,
       solo: solo,
@@ -46,7 +45,7 @@ class DeclarerWithDefault extends Declarer {
     dynamic skip,
     Map<String, dynamic>? onPlatform,
     dynamic tags,
-    TestLocation? location,
+    // TestLocation? location,
     int? retry,
     bool solo = false,
   }) {
@@ -58,7 +57,7 @@ class DeclarerWithDefault extends Declarer {
       skip: skip,
       onPlatform: onPlatform,
       tags: tags,
-      location: location,
+      // location: location,
       // NOTE use this for flaky test retrying, see #16
       retry: retry ?? defaultRetry,
       solo: solo,
