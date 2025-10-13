@@ -1,195 +1,121 @@
 import 'dart:async';
 
-class VideoPlayerController /*with AttachableStateMixin<_VideoPlayerState>*/ {
-  // static const _kTag = 'VideoPlayerController';
+import 'package:convenient_test_common/convenient_test_common.dart';
+import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 
-  Stream<Duration> get positionStream => _positionStreamController.stream;
-  final _positionStreamController = StreamController<Duration>.broadcast();
+class VideoPlayerController with AttachableStateMixin<_VideoPlayerState> {
+  final _positionController = StreamController<Duration>.broadcast();
+  Stream<Duration> get positionStream => _positionController.stream;
 
-  Future<void> seek(Duration position) async {
-    // #303
-    // Log.d(_kTag, 'seek position=$position');
-    //
-    // final state = states.singleOrNull;
-    // if (state == null) {
-    //   Log.d(_kTag, 'seek skip since state==null');
-    //   return;
-    // }
-    //
-    // state.player.seek(position);
+  // публичные действия
+  Future<void> seek(Duration pos) async => _seekDelegate?.call(pos);
+  Future<void> play() async => _playDelegate?.call();
+  Future<void> pause() async => _pauseDelegate?.call();
+
+  // emit текущей позиции наружу (слушает store)
+  void _emitPosition(Duration pos) {
+    if (!_positionController.isClosed) {
+      _positionController.add(pos);
+    }
   }
 
   void dispose() {
-    _positionStreamController.close();
+    _positionController.close();
   }
+
+  // делегаты, которые выставляет State
+  Future<void> Function(Duration pos)? _seekDelegate;
+  Future<void> Function()? _playDelegate;
+  Future<void> Function()? _pauseDelegate;
 }
 
-// #303
-// class VideoPlayer extends StatefulWidget {
-//   final String videoPath;
-//   final Duration startTime;
-//   final Duration stopTime;
-//   final VideoPlayerController controller;
-//
-//   const VideoPlayer({
-//     super.key,
-//     required this.videoPath,
-//     required this.startTime,
-//     required this.stopTime,
-//     required this.controller,
-//   });
-//
-//   @override
-//   State<VideoPlayer> createState() => _VideoPlayerState();
-// }
-//
-// class _VideoPlayerState extends State<VideoPlayer> {
-//   static const _kTag = 'VideoPlayer';
-//
-//   final player = Player(id: Random().nextInt(100000000));
-//
-//   double get playbackRate => _kPlaybackRates[playbackRateIndex];
-//   var playbackRateIndex = 0;
-//
-//   late final StreamSubscription<PositionState> _upstreamPositionListenerDisposer;
-//
-//   static const _kPlaybackRates = [1.0, 0.2, 0.4];
-//
-//   @override
-//   void initState() {
-//     super.initState();
-//     _init();
-//
-//     _upstreamPositionListenerDisposer = player.positionStream.listen(_handleUpstreamPositionEvent);
-//   }
-//
-//   void _handleUpstreamPositionEvent(PositionState e) {
-//     final position = e.position;
-//     if (position == null) {
-//       Log.d(_kTag, 'player.positionStream receive position==null thus do not forward to downstream');
-//       return;
-//     }
-//
-//     widget.controller._positionStreamController.add(position);
-//   }
-//
-//   @override
-//   void didUpdateWidget(covariant VideoPlayer oldWidget) {
-//     super.didUpdateWidget(oldWidget);
-//     if (oldWidget.videoPath != widget.videoPath ||
-//         oldWidget.startTime != widget.startTime ||
-//         oldWidget.stopTime != widget.stopTime) {
-//       _deInit();
-//       _init();
-//     }
-//     if (oldWidget.controller != widget.controller) {
-//       // should not happen
-//       throw Exception('Does not support change `controller` yet');
-//     }
-//   }
-//
-//   @override
-//   void dispose() {
-//     _deInit();
-//     _upstreamPositionListenerDisposer.cancel();
-//     player.dispose();
-//     super.dispose();
-//   }
-//
-//   void _init() {
-//     player.open(Media.file(
-//       File(widget.videoPath),
-//       startTime: widget.startTime,
-//       stopTime: widget.stopTime,
-//     ));
-//   }
-//
-//   void _deInit() {
-//     // nothing yet
-//   }
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return AttachableStateAttacherWidget(
-//       target: widget.controller,
-//       state: this,
-//       child: Padding(
-//         padding: const EdgeInsets.symmetric(horizontal: 8),
-//         child: Column(
-//           children: [
-//             const SizedBox(height: 8),
-//             _buildControlRow(),
-//             const SizedBox(height: 8),
-//             Expanded(
-//               child: Center(
-//                 child: Video(
-//                   player: player,
-//                   // playlistLength: 1,
-//                 ),
-//               ),
-//             ),
-//             const SizedBox(height: 8),
-//             _buildPositionBar(),
-//             const SizedBox(height: 8),
-//           ],
-//         ),
-//       ),
-//     );
-//   }
-//
-//   Widget _buildControlRow() {
-//     return Row(
-//       children: [
-//         TextButton(
-//           onPressed: () {
-//             setState(() => playbackRateIndex = (playbackRateIndex + 1) % _kPlaybackRates.length);
-//             player.setRate(playbackRate);
-//           },
-//           child: Text('Speed ${playbackRate.toStringAsFixed(1)}x'),
-//         ),
-//         Expanded(child: Container()),
-//         TextButton(
-//           onPressed: _openExternally,
-//           child: const Text('Open Externally'),
-//         ),
-//       ],
-//     );
-//   }
-//
-//   Future<void> _openExternally() async {
-//     // TODO add support for other platforms
-//     Log.i(_kTag, 'open externally start');
-//     final result = await Process.run('open', ['--reveal', widget.videoPath]);
-//     Log.i(_kTag, 'open externally end exitCode=${result.exitCode} stdout=${result.stdout} stderr=${result.stderr}');
-//   }
-//
-//   Widget _buildPositionBar() {
-//     return StreamBuilder<PositionState>(
-//       stream: player.positionStream,
-//       builder: (_, positionSnapshot) {
-//         final position = positionSnapshot.data ?? PositionState();
-//
-//         final sliderMax = position.duration?.inMicroseconds.toDouble() ?? 0;
-//         final sliderValue = (position.position?.inMicroseconds.toDouble() ?? 0).clamp(0.0, sliderMax);
-//
-//         return Row(
-//           children: [
-//             Text(_formatDuration(position.position ?? Duration.zero)),
-//             Expanded(
-//               child: Slider(
-//                 value: sliderValue,
-//                 min: 0,
-//                 max: sliderMax,
-//                 onChanged: (microseconds) => player.seek(Duration(microseconds: microseconds.round())),
-//               ),
-//             ),
-//             Text(_formatDuration(position.duration ?? Duration.zero)),
-//           ],
-//         );
-//       },
-//     );
-//   }
-// }
-//
-// // ignore: prefer_interpolation_to_compose_strings
-// String _formatDuration(Duration d) => (d.inMilliseconds / 1000).toStringAsFixed(2) + 's';
+class VideoPlayer extends StatefulWidget {
+  final String videoPath;
+  final Duration startTime;
+  final Duration stopTime;
+  final VideoPlayerController controller;
+
+  const VideoPlayer({
+    super.key,
+    required this.videoPath,
+    required this.startTime,
+    required this.stopTime,
+    required this.controller,
+  });
+
+  @override
+  State<VideoPlayer> createState() => _VideoPlayerState();
+}
+
+class _VideoPlayerState extends State<VideoPlayer> {
+  late final Player _player;
+  late final VideoController _videoController;
+  StreamSubscription<Duration>? _posSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _player = Player();
+    _videoController = VideoController(_player);
+
+    // прокинуть делегаты в контроллер
+    widget.controller._seekDelegate = (d) => _player.seek(d);
+    widget.controller._playDelegate  = () => _player.play();
+    widget.controller._pauseDelegate = () => _player.pause();
+
+    _openAndSeek();
+
+    // позиция → наружу + авто-стоп на stopTime
+    _posSub = _player.stream.position.listen((pos) async {
+      widget.controller._emitPosition(pos);
+      if (pos >= widget.stopTime) {
+        await _player.pause();
+      }
+    });
+  }
+
+  Future<void> _openAndSeek() async {
+    await _player.open(Media(widget.videoPath), play: false);
+    if (widget.startTime > Duration.zero) {
+      await _player.seek(widget.startTime);
+    }
+    await _player.play();
+  }
+
+  @override
+  void didUpdateWidget(covariant VideoPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.videoPath != widget.videoPath) {
+      _player.stop();
+      _openAndSeek();
+      return;
+    }
+    if (oldWidget.startTime != widget.startTime ||
+        oldWidget.stopTime != widget.stopTime) {
+      () async {
+        await _player.pause();
+        await _player.seek(widget.startTime);
+        await _player.play();
+      }();
+    }
+  }
+
+  @override
+  void dispose() {
+    _posSub?.cancel();
+    _player.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // ВАЖНО: именно здесь attach/detach State к контроллеру
+    return AttachableStateAttacherWidget<VideoPlayerController, _VideoPlayerState>(
+      target: widget.controller,
+      state: this,
+      child: Video(controller: _videoController),
+    );
+  }
+}

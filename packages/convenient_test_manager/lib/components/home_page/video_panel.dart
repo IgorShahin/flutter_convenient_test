@@ -1,3 +1,4 @@
+import 'package:convenient_test_manager/components/misc/video_player.dart';
 import 'package:convenient_test_manager/stores/video_player_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
@@ -24,14 +25,14 @@ class HomePageVideoPanel extends StatelessWidget {
       }
 
       // #303
-      return const Text(
-          'Video is temporarily disabled before dart_vlc or other video library is supported on desktop');
-      // return VideoPlayer(
-      //   videoPath: displayVideoPath,
-      //   startTime: videoPlayerStore.displayRange.item1,
-      //   stopTime: videoPlayerStore.displayRange.item2,
-      //   controller: videoPlayerStore.mainPlayerController,
-      // );
+      // return const Text(
+      //     'Video is temporarily disabled before dart_vlc or other video library is supported on desktop');
+      return VideoPlayer(
+        videoPath: displayVideoPath,
+        startTime: videoPlayerStore.displayRange.item1,
+        stopTime: videoPlayerStore.displayRange.item2,
+        controller: videoPlayerStore.mainPlayerController,
+      );
     });
   }
 }

@@ -11,6 +11,7 @@ import 'package:convenient_test_manager_dart/services/misc_dart_service.dart';
 import 'package:convenient_test_manager_dart/stores/highlight_store.dart';
 import 'package:convenient_test_manager_dart/stores/video_player_store.dart';
 import 'package:get_it/get_it.dart';
+import 'package:media_kit/media_kit.dart';
 
 final getIt = GetIt.instance;
 
@@ -28,7 +29,7 @@ Future<void> setup({
     parseConfigFile: parseConfigFile,
   );
 
-  // if (initVLC) DartVLC.initialize(); // #303
+  if (initVLC) MediaKit.ensureInitialized();
 
   getIt.registerSingleton<VideoPlayerStore>(VideoPlayerStore());
   getIt.registerSingleton<HighlightStore>(HighlightStore());
