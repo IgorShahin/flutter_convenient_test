@@ -207,6 +207,7 @@ abstract class _WorkerVideoRecordingServiceDesktopBase
 class _WorkerVideoRecordingServiceMacos
     extends _WorkerVideoRecordingServiceDesktopBase {
   static const _kTag = 'WorkerVideoRecordingServiceMacos';
+  static const _kStartupProbeTimeout = Duration(milliseconds: 700);
 
   @override
   String get tag => _kTag;
@@ -216,29 +217,76 @@ class _WorkerVideoRecordingServiceMacos
 
   @override
   Future<Process> startProcess(String targetPath) async {
-    final args = <String>['-x', '-v'];
     final rect = _resolveMacosOwnWindowRect();
     if (rect != null) {
-      args.add('-R${rect.toArg()}');
-      Log.i(_kTag, 'startRecord capture own app window rect=$rect');
+      final byWindow = await _startScreencapture(
+        targetPath: targetPath,
+        args: ['-x', '-v', '-R${rect.toArg()}', targetPath],
+        modeLabel: 'window',
+      );
+      if (byWindow != null) {
+        Log.i(_kTag, 'startRecord capture own app window rect=$rect');
+        return byWindow;
+      }
+      Log.w(
+        _kTag,
+        'startRecord window mode failed, fallback to full display',
+      );
     } else {
-      args
-        ..add('-D')
-        ..add('1');
       Log.w(
         _kTag,
         'startRecord cannot resolve own app window; fallback to full display',
       );
     }
-    args.add(targetPath);
 
+    final byDisplay = await _startScreencapture(
+      targetPath: targetPath,
+      args: ['-x', '-v', '-D', '1', targetPath],
+      modeLabel: 'display',
+    );
+    if (byDisplay != null) {
+      return byDisplay;
+    }
+
+    throw Exception(
+      'Failed to start macOS screencapture. '
+      'Please allow Screen Recording permission for the tested app/process.',
+    );
+  }
+
+  Future<Process?> _startScreencapture({
+    required String targetPath,
+    required List<String> args,
+    required String modeLabel,
+  }) async {
     final process = await Process.start('screencapture', args);
-    unawaited(process.stdout
-        .transform(systemEncoding.decoder)
-        .forEach((e) => Log.d(_kTag, '[STDOUT] $e')));
-    unawaited(process.stderr
-        .transform(systemEncoding.decoder)
-        .forEach((e) => Log.d(_kTag, '[STDERR] $e')));
+    final stderrBuffer = StringBuffer();
+    unawaited(
+      process.stdout
+          .transform(systemEncoding.decoder)
+          .forEach((e) => Log.d(_kTag, '[STDOUT][$modeLabel] $e')),
+    );
+    unawaited(
+      process.stderr.transform(systemEncoding.decoder).forEach((e) {
+        stderrBuffer.write(e);
+        Log.d(_kTag, '[STDERR][$modeLabel] $e');
+      }),
+    );
+
+    final earlyExit = await Future.any<Object?>([
+      process.exitCode.then<Object?>((code) => code),
+      Future<void>.delayed(_kStartupProbeTimeout),
+    ]);
+    if (earlyExit is int) {
+      final stderrText = stderrBuffer.toString().trim();
+      Log.w(
+        _kTag,
+        'screencapture exited early mode=$modeLabel '
+        'exitCode=$earlyExit targetPath=$targetPath stderr="$stderrText"',
+      );
+      return null;
+    }
+
     return process;
   }
 
