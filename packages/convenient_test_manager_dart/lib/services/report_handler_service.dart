@@ -13,6 +13,7 @@ import 'package:convenient_test_manager_dart/stores/suite_info_store.dart';
 import 'package:convenient_test_manager_dart/stores/video_player_store.dart';
 import 'package:convenient_test_manager_dart/stores/video_recorder_store.dart';
 import 'package:convenient_test_manager_dart/stores/worker_super_run_store.dart';
+import 'package:crypto/crypto.dart';
 import 'package:get_it/get_it.dart';
 import 'package:mobx/mobx.dart';
 
@@ -168,19 +169,39 @@ class ReportHandlerService {
     if (!name.startsWith('$_kVideoChunkSnapshotPrefix:')) return false;
 
     final parts = name.split(':');
-    if (parts.length != 7) {
+    if (parts.length != 7 && parts.length != 9) {
       Log.w(_kTag, 'invalid worker video chunk snapshot name="$name"');
       return true;
     }
 
     final sessionId = parts[1];
-    final fileName = parts[2];
+    if (_failedIncomingVideoSessionIds.contains(sessionId)) {
+      Log.w(_kTag, 'skip chunk from failed worker video sessionId=$sessionId');
+      return true;
+    }
+
+    final rawFileName = parts[2];
+    final fileName = () {
+      try {
+        return Uri.decodeComponent(rawFileName);
+      } catch (_) {
+        return rawFileName;
+      }
+    }();
     final startMs = int.tryParse(parts[3]);
     final endMs = int.tryParse(parts[4]);
     final chunkIndex = int.tryParse(parts[5]);
     final isLastChunk = parts[6] == '1';
+    final totalChunks = parts.length >= 9 ? int.tryParse(parts[7]) : null;
+    final expectedSha256 = parts.length >= 9 ? parts[8] : null;
     if (startMs == null || endMs == null || chunkIndex == null) {
       Log.w(_kTag, 'invalid worker video chunk snapshot fields name="$name"');
+      await _markWorkerVideoSessionFailed(sessionId);
+      return true;
+    }
+    if (totalChunks != null && totalChunks <= 0) {
+      Log.w(_kTag, 'invalid totalChunks=$totalChunks sessionId=$sessionId');
+      await _markWorkerVideoSessionFailed(sessionId);
       return true;
     }
 
@@ -195,8 +216,33 @@ class ReportHandlerService {
         fileName: fileName,
         startTime: DateTime.fromMillisecondsSinceEpoch(startMs),
         endTime: DateTime.fromMillisecondsSinceEpoch(endMs),
+        totalChunks: totalChunks,
+        expectedSha256: expectedSha256,
       ),
     );
+
+    if (state.totalChunks != null &&
+        totalChunks != null &&
+        state.totalChunks != totalChunks) {
+      Log.w(
+        _kTag,
+        'worker video chunk totalChunks mismatch sessionId=$sessionId '
+        'existing=${state.totalChunks} incoming=$totalChunks',
+      );
+      await _markWorkerVideoSessionFailed(sessionId);
+      return true;
+    }
+    if (state.expectedSha256 != null &&
+        expectedSha256 != null &&
+        state.expectedSha256 != expectedSha256) {
+      Log.w(
+        _kTag,
+        'worker video chunk sha mismatch sessionId=$sessionId '
+        'existing=${state.expectedSha256} incoming=$expectedSha256',
+      );
+      await _markWorkerVideoSessionFailed(sessionId);
+      return true;
+    }
 
     if (chunkIndex != state.nextChunkIndex) {
       Log.w(
@@ -204,7 +250,8 @@ class ReportHandlerService {
         'worker video chunk out-of-order sessionId=$sessionId '
         'chunkIndex=$chunkIndex expected=${state.nextChunkIndex}',
       );
-      if (chunkIndex < state.nextChunkIndex) return true;
+      await _markWorkerVideoSessionFailed(sessionId);
+      return true;
     }
 
     final tempFile = File(state.tempPath);
@@ -213,7 +260,27 @@ class ReportHandlerService {
     }
     state.nextChunkIndex = chunkIndex + 1;
 
+    if (state.totalChunks != null && state.nextChunkIndex > state.totalChunks!) {
+      Log.w(
+        _kTag,
+        'worker video chunk exceeds totalChunks sessionId=$sessionId '
+        'nextChunkIndex=${state.nextChunkIndex} totalChunks=${state.totalChunks}',
+      );
+      await _markWorkerVideoSessionFailed(sessionId);
+      return true;
+    }
+
     if (!isLastChunk) return true;
+
+    if (state.totalChunks != null && chunkIndex != state.totalChunks! - 1) {
+      Log.w(
+        _kTag,
+        'worker video last-chunk index mismatch sessionId=$sessionId '
+        'chunkIndex=$chunkIndex totalChunks=${state.totalChunks}',
+      );
+      await _markWorkerVideoSessionFailed(sessionId);
+      return true;
+    }
 
     final targetPath = await _createUniqueVideoPath(videoDir, state.fileName);
     if (await File(targetPath).exists()) {
@@ -230,6 +297,22 @@ class ReportHandlerService {
       );
       await File(targetPath).delete();
     } else {
+      if (state.expectedSha256 != null) {
+        final actualSha256 =
+            sha256.convert(await File(targetPath).readAsBytes()).toString();
+        if (actualSha256 != state.expectedSha256) {
+          Log.w(
+            _kTag,
+            'ignore uploaded worker video since sha256 mismatch '
+            'expected=${state.expectedSha256} actual=$actualSha256 path=$targetPath',
+          );
+          await File(targetPath).delete();
+          await _markWorkerVideoSessionFailed(sessionId, clearState: false);
+          _incomingVideoChunkMap.remove(sessionId);
+          return true;
+        }
+      }
+
       final info = VideoInfo(
         path: targetPath,
         startTime: state.startTime,
@@ -265,12 +348,29 @@ class ReportHandlerService {
       }
     }
     _incomingVideoChunkMap.clear();
+    _failedIncomingVideoSessionIds.clear();
+  }
+
+  Future<void> _markWorkerVideoSessionFailed(
+    String sessionId, {
+    bool clearState = true,
+  }) async {
+    _failedIncomingVideoSessionIds.add(sessionId);
+    if (!clearState) return;
+
+    final state = _incomingVideoChunkMap.remove(sessionId);
+    if (state == null) return;
+    final file = File(state.tempPath);
+    if (await file.exists()) {
+      await file.delete();
+    }
   }
 
   final _logStore = GetIt.I.get<LogStore>();
   final _suiteInfoStore = GetIt.I.get<SuiteInfoStore>();
   final _rawLogStore = GetIt.I.get<RawLogStore>();
   final _incomingVideoChunkMap = <String, _IncomingVideoChunkState>{};
+  final _failedIncomingVideoSessionIds = <String>{};
 }
 
 class _IncomingVideoChunkState {
@@ -278,6 +378,8 @@ class _IncomingVideoChunkState {
   final String fileName;
   final DateTime startTime;
   final DateTime endTime;
+  final int? totalChunks;
+  final String? expectedSha256;
   int nextChunkIndex = 0;
 
   _IncomingVideoChunkState({
@@ -285,5 +387,7 @@ class _IncomingVideoChunkState {
     required this.fileName,
     required this.startTime,
     required this.endTime,
+    this.totalChunks,
+    this.expectedSha256,
   });
 }

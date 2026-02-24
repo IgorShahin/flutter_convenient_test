@@ -12,6 +12,7 @@ dependencies:
   convenient_test: ^1.0.0
   convenient_test_common: ^1.0.0
   convenient_test_common_dart: ^1.0.0
+  crypto: ^3.0.6
   fixnum: ^1.1.1
   flutter:
     sdk: flutter

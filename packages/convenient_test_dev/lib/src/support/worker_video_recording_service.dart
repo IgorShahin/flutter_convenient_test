@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:convenient_test_common/convenient_test_common.dart';
 import 'package:convenient_test_dev/src/support/reporter_service.dart';
+import 'package:crypto/crypto.dart';
 import 'package:fixnum/fixnum.dart';
 import 'package:intl/intl.dart';
 
@@ -143,10 +144,12 @@ abstract class _WorkerVideoRecordingServiceDesktopBase
   }) async {
     final sessionId = _createSessionId();
     final fileName = file.uri.pathSegments.last;
+    final encodedFileName = Uri.encodeComponent(fileName);
     final startMs = startTime.millisecondsSinceEpoch;
     final endMs = endTime.millisecondsSinceEpoch;
 
     final bytes = await file.readAsBytes();
+    final fileSha256 = sha256.convert(bytes).toString();
     final totalChunks =
         (bytes.length / WorkerVideoRecordingService._kChunkSizeBytes).ceil();
     Log.i(
@@ -163,7 +166,7 @@ abstract class _WorkerVideoRecordingServiceDesktopBase
       );
       final chunk = Uint8List.sublistView(bytes, start, end);
       final name =
-          '$kVideoChunkSnapshotPrefix:$sessionId:$fileName:$startMs:$endMs:$i:${i == totalChunks - 1 ? 1 : 0}';
+          '$kVideoChunkSnapshotPrefix:$sessionId:$encodedFileName:$startMs:$endMs:$i:${i == totalChunks - 1 ? 1 : 0}:$totalChunks:$fileSha256';
 
       await reporterService.report(
         ReportItem(
