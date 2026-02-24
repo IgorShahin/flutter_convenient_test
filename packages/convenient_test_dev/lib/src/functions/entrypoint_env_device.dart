@@ -11,6 +11,7 @@ import 'package:convenient_test_dev/src/support/setup.dart';
 import 'package:convenient_test_dev/src/support/slot.dart';
 import 'package:convenient_test_dev/src/support/spy_declarer.dart';
 import 'package:convenient_test_dev/src/support/static_config.dart';
+import 'package:convenient_test_dev/src/support/worker_video_recording_service.dart';
 import 'package:convenient_test_dev/src/third_party/my_test_compat.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meta/meta.dart';
@@ -25,6 +26,9 @@ Future<void> convenientTestEntrypointWhenEnvDevice(
   );
   myGetIt.registerSingleton<WorkerReportSaverService>(
     WorkerReportSaverServiceSendToManager(),
+  );
+  myGetIt.registerSingleton<WorkerVideoRecordingService>(
+    WorkerVideoRecordingService.create(),
   );
 
   final currentRunConfig = await myGetIt
@@ -47,8 +51,8 @@ Future<void> convenientTestEntrypointWhenEnvDevice(
 
 Future<void> _runModeInteractiveApp() async {
   await myGetIt.get<ConvenientTestSlot>().appMain(
-    AppMainExecuteMode.interactiveApp,
-  );
+        AppMainExecuteMode.interactiveApp,
+      );
 }
 
 Future<void> _runModeIntegrationTest(
@@ -86,11 +90,13 @@ Future<void> _runModeIntegrationTest(
               rethrow;
             }
 
-            unawaited(
-              WorkerReportSaverService.I?.report(
+            unawaited(() async {
+              final recorder = myGetIt.get<WorkerVideoRecordingService>();
+              await recorder.startRecord();
+              await WorkerReportSaverService.I?.report(
                 ReportItem(setUpAll: SetUpAll()),
-              ),
-            );
+              );
+            }());
 
             setup();
 
@@ -148,6 +154,10 @@ Future<void> _lastTearDownAll() async {
 
   final reporterService = WorkerReportSaverService.I;
   if (reporterService != null) {
+    await myGetIt
+        .get<WorkerVideoRecordingService>()
+        .stopAndUpload(reporterService);
+
     // need to `await` to ensure it is sent
     await reporterService.report(
       ReportItem(

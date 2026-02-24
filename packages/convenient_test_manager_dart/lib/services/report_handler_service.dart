@@ -1,13 +1,16 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:convenient_test_common_dart/convenient_test_common_dart.dart';
+import 'package:convenient_test_manager_dart/services/fs_service.dart';
 import 'package:convenient_test_manager_dart/services/misc_dart_service.dart';
 import 'package:convenient_test_manager_dart/services/report_saver_service.dart';
 import 'package:convenient_test_manager_dart/stores/highlight_store.dart';
 import 'package:convenient_test_manager_dart/stores/log_store.dart';
 import 'package:convenient_test_manager_dart/stores/raw_log_store.dart';
 import 'package:convenient_test_manager_dart/stores/suite_info_store.dart';
+import 'package:convenient_test_manager_dart/stores/video_player_store.dart';
 import 'package:convenient_test_manager_dart/stores/video_recorder_store.dart';
 import 'package:convenient_test_manager_dart/stores/worker_super_run_store.dart';
 import 'package:get_it/get_it.dart';
@@ -15,6 +18,7 @@ import 'package:mobx/mobx.dart';
 
 class ReportHandlerService {
   static const _kTag = 'ReportHandlerService';
+  static const _kVideoChunkSnapshotPrefix = '__ct_video_chunk__';
 
   /// handle a report sent by the worker.
   /// doClear: if handleSuiteInfoProto should clear the already known suite info.
@@ -56,18 +60,17 @@ class ReportHandlerService {
   Future<void> _handleSetUpAll(SetUpAll request,
       {required bool offlineFile}) async {
     Log.d(_kTag, 'SetUpAll $request');
-
-    if (!offlineFile) await GetIt.I.get<VideoRecorderStore>().startRecord();
+    if (!offlineFile) {
+      Log.i(
+          _kTag, 'SetUpAll skip local manager recording (worker-owned video)');
+    }
   }
 
   Future<void> _handleTearDownAll(TearDownAll request,
       {required bool offlineFile}) async {
     Log.d(_kTag, 'TearDownAll $request');
-
     if (!offlineFile) {
-      await GetIt.I.get<VideoRecorderStore>().stopRecordWithPolicy(
-          keepVideo:
-              request.resolvedExecutionFilter.allowExecuteTestNames.isNotEmpty);
+      Log.i(_kTag, 'TearDownAll skip local manager stop (worker-owned video)');
     }
 
     GetIt.I
@@ -131,6 +134,8 @@ class ReportHandlerService {
   }
 
   Future<void> _handleSnapshot(Snapshot request) async {
+    if (await _handleWorkerVideoChunkSnapshot(request)) return;
+
     Log.d(_kTag, 'Snapshot');
 
     final logEntryId = request.logEntryId.toInt();
@@ -154,9 +159,131 @@ class ReportHandlerService {
 
     Log.d(_kTag, 'handleReportSuiteInfo set new suitInfo');
     _suiteInfoStore.suiteInfo = SuiteInfo.fromProto(request);
+
+    await _clearPendingIncomingVideoChunks();
+  }
+
+  Future<bool> _handleWorkerVideoChunkSnapshot(Snapshot request) async {
+    final name = request.name;
+    if (!name.startsWith('$_kVideoChunkSnapshotPrefix:')) return false;
+
+    final parts = name.split(':');
+    if (parts.length != 7) {
+      Log.w(_kTag, 'invalid worker video chunk snapshot name="$name"');
+      return true;
+    }
+
+    final sessionId = parts[1];
+    final fileName = parts[2];
+    final startMs = int.tryParse(parts[3]);
+    final endMs = int.tryParse(parts[4]);
+    final chunkIndex = int.tryParse(parts[5]);
+    final isLastChunk = parts[6] == '1';
+    if (startMs == null || endMs == null || chunkIndex == null) {
+      Log.w(_kTag, 'invalid worker video chunk snapshot fields name="$name"');
+      return true;
+    }
+
+    final chunkData = request.image as Uint8List;
+    final videoDir = await GetIt.I
+        .get<FsService>()
+        .getActiveSuperRunDataSubDirectory(category: 'Video');
+    final state = _incomingVideoChunkMap.putIfAbsent(
+      sessionId,
+      () => _IncomingVideoChunkState(
+        tempPath: '$videoDir.__incoming__$sessionId.part',
+        fileName: fileName,
+        startTime: DateTime.fromMillisecondsSinceEpoch(startMs),
+        endTime: DateTime.fromMillisecondsSinceEpoch(endMs),
+      ),
+    );
+
+    if (chunkIndex != state.nextChunkIndex) {
+      Log.w(
+        _kTag,
+        'worker video chunk out-of-order sessionId=$sessionId '
+        'chunkIndex=$chunkIndex expected=${state.nextChunkIndex}',
+      );
+      if (chunkIndex < state.nextChunkIndex) return true;
+    }
+
+    final tempFile = File(state.tempPath);
+    if (chunkData.isNotEmpty) {
+      await tempFile.writeAsBytes(chunkData, mode: FileMode.append);
+    }
+    state.nextChunkIndex = chunkIndex + 1;
+
+    if (!isLastChunk) return true;
+
+    final targetPath = await _createUniqueVideoPath(videoDir, state.fileName);
+    if (await File(targetPath).exists()) {
+      await File(targetPath).delete();
+    }
+    await tempFile.rename(targetPath);
+
+    final sizeBytes = await File(targetPath).length();
+    if (sizeBytes < 4 * 1024) {
+      Log.w(
+        _kTag,
+        'ignore uploaded worker video since too small '
+        'sizeBytes=$sizeBytes path=$targetPath',
+      );
+      await File(targetPath).delete();
+    } else {
+      final info = VideoInfo(
+        path: targetPath,
+        startTime: state.startTime,
+        endTime: state.endTime,
+      );
+      GetIt.I.get<VideoPlayerStoreBase>().handleRecorderFinished(info);
+    }
+
+    _incomingVideoChunkMap.remove(sessionId);
+    return true;
+  }
+
+  Future<String> _createUniqueVideoPath(
+      String videoDir, String fileName) async {
+    final dot = fileName.lastIndexOf('.');
+    final stem = dot <= 0 ? fileName : fileName.substring(0, dot);
+    final ext = dot <= 0 ? '' : fileName.substring(dot);
+
+    var attempt = 0;
+    while (true) {
+      final suffix = attempt == 0 ? '' : '-$attempt';
+      final path = '$videoDir$stem$suffix$ext';
+      if (!await File(path).exists()) return path;
+      attempt++;
+    }
+  }
+
+  Future<void> _clearPendingIncomingVideoChunks() async {
+    for (final state in _incomingVideoChunkMap.values) {
+      final file = File(state.tempPath);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    }
+    _incomingVideoChunkMap.clear();
   }
 
   final _logStore = GetIt.I.get<LogStore>();
   final _suiteInfoStore = GetIt.I.get<SuiteInfoStore>();
   final _rawLogStore = GetIt.I.get<RawLogStore>();
+  final _incomingVideoChunkMap = <String, _IncomingVideoChunkState>{};
+}
+
+class _IncomingVideoChunkState {
+  final String tempPath;
+  final String fileName;
+  final DateTime startTime;
+  final DateTime endTime;
+  int nextChunkIndex = 0;
+
+  _IncomingVideoChunkState({
+    required this.tempPath,
+    required this.fileName,
+    required this.startTime,
+    required this.endTime,
+  });
 }
