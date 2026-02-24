@@ -208,6 +208,7 @@ class _WorkerVideoRecordingServiceMacos
     extends _WorkerVideoRecordingServiceDesktopBase {
   static const _kTag = 'WorkerVideoRecordingServiceMacos';
   static const _kStartupProbeTimeout = Duration(milliseconds: 700);
+  _MacosRecorderBackend _backend = _MacosRecorderBackend.none;
 
   @override
   String get tag => _kTag;
@@ -245,9 +246,17 @@ class _WorkerVideoRecordingServiceMacos
       modeLabel: 'display',
     );
     if (byDisplay != null) {
+      _backend = _MacosRecorderBackend.screencapture;
       return byDisplay;
     }
 
+    final byFfmpeg = await _startFfmpegAvfoundation(targetPath: targetPath);
+    if (byFfmpeg != null) {
+      _backend = _MacosRecorderBackend.ffmpegAvfoundation;
+      return byFfmpeg;
+    }
+
+    _backend = _MacosRecorderBackend.none;
     throw Exception(
       'Failed to start macOS screencapture. '
       'Please allow Screen Recording permission for the tested app/process.',
@@ -287,18 +296,124 @@ class _WorkerVideoRecordingServiceMacos
       return null;
     }
 
+    _backend = _MacosRecorderBackend.screencapture;
     return process;
+  }
+
+  Future<Process?> _startFfmpegAvfoundation({required String targetPath}) async {
+    final ffmpegVersion = Process.runSync('ffmpeg', ['-version']);
+    if (ffmpegVersion.exitCode != 0) {
+      Log.w(
+        _kTag,
+        'ffmpeg is not available on worker. skip avfoundation fallback.',
+      );
+      return null;
+    }
+
+    for (final videoIndex in const [1, 0, 2]) {
+      final args = [
+        '-y',
+        '-loglevel',
+        'error',
+        '-f',
+        'avfoundation',
+        '-framerate',
+        '8',
+        '-i',
+        '$videoIndex:none',
+        '-vf',
+        'scale=1280:-2',
+        '-c:v',
+        'libx264',
+        '-preset',
+        'veryfast',
+        '-crf',
+        '35',
+        '-pix_fmt',
+        'yuv420p',
+        '-movflags',
+        '+faststart',
+        targetPath,
+      ];
+
+      final process = await Process.start('ffmpeg', args);
+      final stderrBuffer = StringBuffer();
+      unawaited(
+        process.stdout
+            .transform(systemEncoding.decoder)
+            .forEach((e) => Log.d(_kTag, '[STDOUT][ffmpeg-avf] $e')),
+      );
+      unawaited(
+        process.stderr.transform(systemEncoding.decoder).forEach((e) {
+          stderrBuffer.write(e);
+          Log.d(_kTag, '[STDERR][ffmpeg-avf] $e');
+        }),
+      );
+
+      final earlyExit = await Future.any<Object?>([
+        process.exitCode.then<Object?>((code) => code),
+        Future<void>.delayed(_kStartupProbeTimeout),
+      ]);
+      if (earlyExit is int) {
+        final stderrText = stderrBuffer.toString().trim();
+        Log.w(
+          _kTag,
+          'ffmpeg avfoundation exited early videoIndex=$videoIndex '
+          'exitCode=$earlyExit stderr="$stderrText"',
+        );
+        continue;
+      }
+
+      Log.i(
+        _kTag,
+        'startRecord fallback to ffmpeg avfoundation with videoIndex=$videoIndex',
+      );
+      return process;
+    }
+
+    return null;
   }
 
   @override
   Future<void> stopProcess(Process process) async {
-    process.kill(ProcessSignal.sigint);
-    final exitCode = await process.exitCode;
+    final exitCode = switch (_backend) {
+      _MacosRecorderBackend.screencapture => await _stopBySigint(process),
+      _MacosRecorderBackend.ffmpegAvfoundation => await _stopFfmpeg(process),
+      _MacosRecorderBackend.none => await process.exitCode,
+    };
+
+    _backend = _MacosRecorderBackend.none;
     Log.i(_kTag, 'stopRecord exitCode=$exitCode');
     if (exitCode != 0) {
       throw Exception('Process execution failed! exitCode=$exitCode');
     }
   }
+
+  Future<int> _stopBySigint(Process process) async {
+    process.kill(ProcessSignal.sigint);
+    return process.exitCode;
+  }
+
+  Future<int> _stopFfmpeg(Process process) async {
+    try {
+      process.stdin.writeln('q');
+      await process.stdin.flush();
+    } catch (_) {}
+
+    return process.exitCode.timeout(
+      const Duration(seconds: 5),
+      onTimeout: () {
+        process.kill();
+        return -1;
+      },
+    );
+  }
+}
+
+enum _MacosRecorderBackend {
+  none,
+  screencapture,
+  ffmpegAvfoundation,
 }
 
 class _WorkerVideoRecordingServiceWindows
