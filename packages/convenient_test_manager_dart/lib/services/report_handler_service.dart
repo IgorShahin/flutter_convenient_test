@@ -20,6 +20,7 @@ import 'package:mobx/mobx.dart';
 class ReportHandlerService {
   static const _kTag = 'ReportHandlerService';
   static const _kVideoChunkSnapshotPrefix = '__ct_video_chunk__';
+  static const _kStaleVideoTolerance = Duration(seconds: 1);
 
   /// handle a report sent by the worker.
   /// doClear: if handleSuiteInfoProto should clear the already known suite info.
@@ -160,6 +161,7 @@ class ReportHandlerService {
 
     Log.d(_kTag, 'handleReportSuiteInfo set new suitInfo');
     _suiteInfoStore.suiteInfo = SuiteInfo.fromProto(request);
+    _currentRunSuiteInfoReceivedAt = DateTime.now().toUtc();
 
     await _clearPendingIncomingVideoChunks();
   }
@@ -201,6 +203,22 @@ class ReportHandlerService {
     }
     if (totalChunks != null && totalChunks <= 0) {
       Log.w(_kTag, 'invalid totalChunks=$totalChunks sessionId=$sessionId');
+      await _markWorkerVideoSessionFailed(sessionId);
+      return true;
+    }
+
+    final chunkStartTimeUtc = DateTime.fromMillisecondsSinceEpoch(startMs).toUtc();
+    final chunkEndTimeUtc = DateTime.fromMillisecondsSinceEpoch(endMs).toUtc();
+    final suiteInfoAt = _currentRunSuiteInfoReceivedAt;
+    if (suiteInfoAt != null &&
+        chunkEndTimeUtc.isBefore(suiteInfoAt.subtract(_kStaleVideoTolerance))) {
+      Log.w(
+        _kTag,
+        'drop stale worker video chunk from previous run '
+        'sessionId=$sessionId chunkIndex=$chunkIndex '
+        'chunkStart=$chunkStartTimeUtc chunkEnd=$chunkEndTimeUtc '
+        'suiteInfoAt=$suiteInfoAt',
+      );
       await _markWorkerVideoSessionFailed(sessionId);
       return true;
     }
@@ -371,6 +389,7 @@ class ReportHandlerService {
   final _rawLogStore = GetIt.I.get<RawLogStore>();
   final _incomingVideoChunkMap = <String, _IncomingVideoChunkState>{};
   final _failedIncomingVideoSessionIds = <String>{};
+  DateTime? _currentRunSuiteInfoReceivedAt;
 }
 
 class _IncomingVideoChunkState {
