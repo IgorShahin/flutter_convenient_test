@@ -90,13 +90,7 @@ Future<void> _runModeIntegrationTest(
               rethrow;
             }
 
-            unawaited(() async {
-              final recorder = myGetIt.get<WorkerVideoRecordingService>();
-              await recorder.startRecord();
-              await WorkerReportSaverService.I?.report(
-                ReportItem(setUpAll: SetUpAll()),
-              );
-            }());
+            setUpAll(_firstSetUpAll);
 
             setup();
 
@@ -179,4 +173,12 @@ Future<void> _lastTearDownAll() async {
   //   Log.i(_kTag, 'exit the process');
   //   exit(0);
   // }
+}
+
+Future<void> _firstSetUpAll() async {
+  final reporterService = WorkerReportSaverService.I;
+  if (reporterService == null) return;
+
+  await myGetIt.get<WorkerVideoRecordingService>().startRecord();
+  await reporterService.report(ReportItem(setUpAll: SetUpAll()));
 }
