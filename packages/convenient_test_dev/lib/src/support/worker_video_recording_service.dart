@@ -47,6 +47,8 @@ abstract class _WorkerVideoRecordingServiceDesktopBase
 
   Future<void> stopProcess(Process process);
 
+  Future<File> postProcessRecordedFile(File file) async => file;
+
   @override
   Future<void> startRecord() async {
     try {
@@ -82,7 +84,8 @@ abstract class _WorkerVideoRecordingServiceDesktopBase
     await _stopProcessSafely(process: process);
 
     final endTime = DateTime.now();
-    final file = File(path);
+    var file = File(path);
+    file = await postProcessRecordedFile(file);
     if (!await _shouldKeepVideo(file, startTime: startTime, endTime: endTime)) {
       return;
     }
@@ -215,6 +218,66 @@ class _WorkerVideoRecordingServiceMacos
 
   @override
   String get fileExtension => 'mov';
+
+  @override
+  Future<File> postProcessRecordedFile(File file) async {
+    // Normalize to a stable MP4 stream to avoid partial playback/freezes.
+    final ffmpegVersion = Process.runSync('ffmpeg', ['-version']);
+    if (ffmpegVersion.exitCode != 0) {
+      Log.w(_kTag, 'ffmpeg not available, skip post-process for ${file.path}');
+      return file;
+    }
+
+    final outputPath =
+        file.path.replaceFirst(RegExp(r'\.[^.]+$'), '.normalized.mp4');
+    final output = File(outputPath);
+    if (await output.exists()) {
+      await output.delete();
+    }
+
+    final result = await Process.run(
+      'ffmpeg',
+      [
+        '-y',
+        '-loglevel',
+        'error',
+        '-i',
+        file.path,
+        '-an',
+        '-vf',
+        'scale=1280:-2,fps=8',
+        '-vsync',
+        'cfr',
+        '-c:v',
+        'libx264',
+        '-preset',
+        'veryfast',
+        '-crf',
+        '35',
+        '-pix_fmt',
+        'yuv420p',
+        '-movflags',
+        '+faststart',
+        output.path,
+      ],
+    );
+
+    if (result.exitCode != 0 || !await output.exists()) {
+      Log.w(
+        _kTag,
+        'post-process failed exitCode=${result.exitCode} '
+        'stderr="${(result.stderr as String).trim()}"',
+      );
+      return file;
+    }
+
+    try {
+      await file.delete();
+    } catch (_) {}
+
+    Log.i(_kTag, 'post-process success input=${file.path} output=${output.path}');
+    return output;
+  }
 
   @override
   Future<Process> startProcess(String targetPath) async {
