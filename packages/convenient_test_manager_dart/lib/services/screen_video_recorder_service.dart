@@ -188,6 +188,8 @@ class _ScreenVideoRecorderServiceMacosDesktop
   _CaptureRect? _resolveCaptureRect() {
     final byTitle = _resolveCaptureRectByTitle();
     if (byTitle != null) return byTitle;
+    final byWorkerPid = _resolveCaptureRectByWorkerVmServicePid();
+    if (byWorkerPid != null) return byWorkerPid;
     return _resolveFrontmostWindowCaptureRect();
   }
 
@@ -252,6 +254,56 @@ end tell
       return null;
     }
     return _CaptureRect.tryParse((result.stdout as String).trim());
+  }
+
+  _CaptureRect? _resolveCaptureRectByWorkerVmServicePid() {
+    final pid = _resolveListeningPidByPort(kWorkerVmServicePort);
+    if (pid == null) return null;
+
+    const script = '''
+on run argv
+  set targetPid to item 1 of argv as integer
+  tell application "System Events"
+    repeat with p in application processes
+      try
+        if unix id of p is targetPid then
+          if (count of windows of p) is 0 then
+            return ""
+          end if
+          set w to front window of p
+          set {xPos, yPos} to position of w
+          set {wSize, hSize} to size of w
+          return (xPos as text) & "," & (yPos as text) & "," & (wSize as text) & "," & (hSize as text)
+        end if
+      end try
+    end repeat
+  end tell
+  return ""
+end run
+''';
+
+    final result = Process.runSync('osascript', ['-e', script, '$pid']);
+    if (result.exitCode != 0) {
+      Log.w(
+        _kTag,
+        'resolveCaptureRectByWorkerVmServicePid failed pid=$pid '
+        'exitCode=${result.exitCode} stderr=${result.stderr}',
+      );
+      return null;
+    }
+
+    final raw = (result.stdout as String).trim();
+    final rect = _CaptureRect.tryParse(raw);
+    if (rect == null) {
+      Log.w(
+        _kTag,
+        'resolveCaptureRectByWorkerVmServicePid no window for pid=$pid raw="$raw"',
+      );
+    } else {
+      Log.i(
+          _kTag, 'resolveCaptureRectByWorkerVmServicePid pid=$pid rect=$rect');
+    }
+    return rect;
   }
 }
 
@@ -558,6 +610,51 @@ bool _matchesPortInAddress(String localAddress, int port) {
   final suffix = ':$port';
   final normalized = localAddress.trim();
   return normalized.endsWith(suffix);
+}
+
+int? _resolveListeningPidByPort(int port) {
+  final result = switch (Platform.operatingSystem) {
+    'windows' => Process.runSync('cmd', ['/c', 'netstat -ano -p tcp']),
+    'macos' => Process.runSync('lsof', ['-nP', '-iTCP:$port', '-sTCP:LISTEN']),
+    _ => Process.runSync(
+        'sh', ['-lc', 'ss -lntp 2>/dev/null || netstat -lntp 2>/dev/null']),
+  };
+  if (result.exitCode != 0) return null;
+
+  final stdout = result.stdout as String;
+  if (Platform.isWindows) {
+    final lines = stdout.split('\n');
+    final regex = RegExp(
+      r'^\s*TCP\s+(\S+)\s+(\S+)\s+LISTENING\s+(\d+)\s*$',
+      caseSensitive: false,
+    );
+    for (final line in lines) {
+      final m = regex.firstMatch(line);
+      if (m == null) continue;
+      final localAddress = m.group(1) ?? '';
+      if (!_matchesPortInAddress(localAddress, port)) continue;
+      final pid = int.tryParse(m.group(3) ?? '');
+      if (pid != null && pid > 0) return pid;
+    }
+    return null;
+  }
+
+  if (Platform.isMacOS) {
+    final lines = stdout.split('\n');
+    for (var i = 1; i < lines.length; i++) {
+      final cols = lines[i].trim().split(RegExp(r'\s+'));
+      if (cols.length < 2) continue;
+      final pid = int.tryParse(cols[1]);
+      if (pid != null && pid > 0) return pid;
+    }
+    return null;
+  }
+
+  final linuxRegex = RegExp(r'pid=(\d+)');
+  final m = linuxRegex.firstMatch(stdout);
+  if (m == null) return null;
+  final pid = int.tryParse(m.group(1) ?? '');
+  return pid != null && pid > 0 ? pid : null;
 }
 
 class _ScreenVideoRecorderServiceNoOp extends ScreenVideoRecorderService {
