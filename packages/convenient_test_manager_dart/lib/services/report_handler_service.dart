@@ -64,7 +64,11 @@ class ReportHandlerService {
       {required bool offlineFile}) async {
     Log.d(_kTag, 'TearDownAll $request');
 
-    if (!offlineFile) await GetIt.I.get<VideoRecorderStore>().stopRecord();
+    if (!offlineFile) {
+      await GetIt.I.get<VideoRecorderStore>().stopRecordWithPolicy(
+          keepVideo:
+              request.resolvedExecutionFilter.allowExecuteTestNames.isNotEmpty);
+    }
 
     GetIt.I
         .get<WorkerSuperRunStore>()

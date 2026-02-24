@@ -66,8 +66,8 @@ abstract class _VideoPlayerStore extends VideoPlayerStoreBase with Store {
 extension ExtObservableMapVideoInfo on ObservableMap<int, VideoInfo> {
   List<int> findVideosAtTimeRange(DateTime start, DateTime end) => entries
       .where((videoEntry) =>
-          videoEntry.value.startTime.isBefore(end) &&
-          videoEntry.value.endTime.isAfter(start))
+          !videoEntry.value.startTime.isAfter(end) &&
+          !videoEntry.value.endTime.isBefore(start))
       .map((videoEntry) => videoEntry.key)
       .toList();
 }

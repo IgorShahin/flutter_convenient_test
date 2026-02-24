@@ -6,7 +6,6 @@ import 'package:convenient_test_manager_dart/services/vm_service_wrapper_service
 import 'package:convenient_test_manager_dart/stores/log_store.dart';
 import 'package:convenient_test_manager_dart/stores/raw_log_store.dart';
 import 'package:convenient_test_manager_dart/stores/suite_info_store.dart';
-import 'package:convenient_test_manager_dart/stores/video_recorder_store.dart';
 import 'package:convenient_test_manager_dart/stores/worker_super_run_store.dart';
 import 'package:get_it/get_it.dart';
 import 'package:protobuf/protobuf.dart';
@@ -45,7 +44,9 @@ class MiscDartService {
     GetIt.I.get<SuiteInfoStore>().clear();
     GetIt.I.get<LogStore>().clear();
     GetIt.I.get<RawLogStore>().clear();
-    GetIt.I.get<VideoRecorderStore>().clear();
+    // Do not clear VideoRecorderStore here.
+    // `SuiteInfoProto` can arrive asynchronously after `SetUpAll`, and clearing
+    // recorder state would lose `recordingVideoInfo` for the active run.
   }
 
   Future<void> readReportFromFile(String path,

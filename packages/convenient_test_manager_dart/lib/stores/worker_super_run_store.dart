@@ -312,6 +312,14 @@ abstract class __WorkerSuperRunControllerIntegrationTestIsolationMode
       executedTestSucceeded: executedTestSucceeded,
     );
 
+    if (state is ITIMStateGoOn) {
+      final lastExecutedTestName =
+          (state as ITIMStateGoOn).lastExecutedTestName;
+      if (!_hasNextMatchingTest(lastExecutedTestName)) {
+        state = const _ITIMState.finished();
+      }
+    }
+
     Log.d(
         _kTag,
         'handleTearDownAll end oldState=$oldState newState=$state '
@@ -321,6 +329,39 @@ abstract class __WorkerSuperRunControllerIntegrationTestIsolationMode
       Log.d(_kTag, 'call hot restart');
       GetIt.I.get<VmServiceWrapperService>().hotRestartThrottled();
     }
+  }
+
+  bool _hasNextMatchingTest(String lastExecutedTestName) {
+    final suiteInfo = GetIt.I.get<SuiteInfoStore>().suiteInfo;
+    if (suiteInfo == null) return true;
+
+    RegExp filter;
+    try {
+      filter = RegExp(filterNameRegex);
+    } catch (e, s) {
+      Log.w(_kTag,
+          '_hasNextMatchingTest fail to parse filterNameRegex=$filterNameRegex e=$e s=$s');
+      return true;
+    }
+
+    final matchingTestNames = <String>[];
+    suiteInfo.traverse((entry) {
+      if (entry is TestInfo && filter.hasMatch(entry.name)) {
+        matchingTestNames.add(entry.name);
+      }
+    });
+
+    final currIndex = matchingTestNames.indexOf(lastExecutedTestName);
+    if (currIndex == -1) {
+      Log.w(
+        _kTag,
+        '_hasNextMatchingTest cannot find lastExecutedTestName=$lastExecutedTestName '
+        'in matchingTestNames=$matchingTestNames',
+      );
+      return true;
+    }
+
+    return currIndex + 1 < matchingTestNames.length;
   }
 
   @override

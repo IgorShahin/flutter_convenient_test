@@ -238,7 +238,15 @@ class _TestInfoSectionBuilder extends StaticSectionBuilder {
     final searchEndTime = endTime.subtract(duration ~/ 10);
     final candidateVideoIds = videoPlayerStore.videoMap
         .findVideosAtTimeRange(searchStartTime, searchEndTime);
-    if (candidateVideoIds.isEmpty) return;
+    if (candidateVideoIds.isEmpty) {
+      Log.w(
+        _kTag,
+        'handleTapPlayVideoButton no candidate videos for testId=${info.id} '
+        'searchStartTime=$searchStartTime searchEndTime=$searchEndTime '
+        'videoInfos=${videoPlayerStore.videoMap}',
+      );
+      return;
+    }
 
     final interestVideoId = candidateVideoIds.length == 1
         ? candidateVideoIds.single
