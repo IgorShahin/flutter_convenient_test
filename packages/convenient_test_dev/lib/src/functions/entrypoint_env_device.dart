@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:convenient_test_common/convenient_test_common.dart';
 import 'package:convenient_test_dev/src/functions/binding.dart';
 import 'package:convenient_test_dev/src/functions/goldens.dart';
+import 'package:convenient_test_dev/src/functions/setup.dart';
 import 'package:convenient_test_dev/src/support/executor.dart';
 import 'package:convenient_test_dev/src/support/get_it.dart';
 import 'package:convenient_test_dev/src/support/manager_rpc_service.dart';
@@ -59,6 +60,10 @@ Future<void> _runModeIntegrationTest(
   FutureOr<void> Function() testBody,
   WorkerCurrentRunConfig_IntegrationTest currentRunConfig,
 ) async {
+  await prepareSetupOncePerRunSession(
+    isFirstRunInSuperRun: currentRunConfig.reportSuiteInfo,
+  );
+
   runZonedGuarded(
     () {
       _configureGoldens(currentRunConfig);

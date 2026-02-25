@@ -48,56 +48,13 @@ class ManagerAllureReportService {
       return;
     }
 
-    await _ensureActiveRunContext();
-    final resultsDirPath = _resultsDirPath;
-    final reportDirPath = _reportDirPath;
-    if (resultsDirPath == null || reportDirPath == null) return;
+    final settings = await _resolveAutoPublishSettings();
+    final apiBase = settings.apiBaseUrl;
 
-    final resultsDir = Directory(resultsDirPath);
-    if (!resultsDir.existsSync()) {
-      Log.w(_kTag, 'allure-results directory not found path=$resultsDirPath');
-      return;
-    }
-    final hasResults = resultsDir
-        .listSync()
-        .whereType<File>()
-        .any((f) => f.path.endsWith('-result.json'));
-    if (!hasResults) {
-      Log.w(_kTag, 'allure-results has no test results path=$resultsDirPath');
-      return;
-    }
-
-    await _hydrateHistoryIntoResults();
-
-    ProcessResult pr;
-    try {
-      pr = await Process.run(
-        'allure',
-        ['generate', resultsDirPath, '-o', reportDirPath, '--clean'],
-        runInShell: true,
-      ).timeout(const Duration(minutes: 2));
-    } on TimeoutException {
-      Log.e(
-        _kTag,
-        'allure generate timeout (>2m). '
-        'resultsDirPath=$resultsDirPath reportDirPath=$reportDirPath',
-      );
-      return;
-    }
-    if (pr.exitCode != 0) {
-      Log.e(
-        _kTag,
-        'allure generate failed exitCode=${pr.exitCode} '
-        'stdout=${pr.stdout} stderr=${pr.stderr}',
-      );
-      return;
-    }
-
-    await _persistHistoryFromReportDir();
-
-    final started = await _startAllureOpenDetached(reportDirPath);
+    final reportUrl = '$apiBase/latest-report';
+    final started = await _openUrlDetached(reportUrl);
     if (!started) return;
-    Log.i(_kTag, 'allure report opened via local server dir=$reportDirPath');
+    Log.i(_kTag, 'remote allure report opened url=$reportUrl');
   }
 
   Future<void> autoPublishToDockerIfConfigured() async {
@@ -203,10 +160,14 @@ class ManagerAllureReportService {
     final logEntryId = request.id.toInt();
     _testNameByLogEntryId[logEntryId] = request.testName;
     if (_isSetUpAllServiceTestName(request.testName)) {
+      _runtimeUuidByLogEntryId.remove(logEntryId);
+      _deferredSetUpAllLastStepIndexByLogEntryId.remove(logEntryId);
       for (final sub in request.subEntries) {
         final subMs = _usToMs(sub.time.toInt());
         final step = _buildStep(sub, subMs);
+        final stepIndex = _deferredSetUpAllSteps.length;
         _deferredSetUpAllSteps.add(step);
+        _deferredSetUpAllLastStepIndexByLogEntryId[logEntryId] = stepIndex;
         _deferredSetUpAllLogBuffer.writeln(_formatRawLogLine(sub, subMs));
       }
       _drainPendingSnapshots(logEntryId, request.testName);
@@ -214,13 +175,17 @@ class ManagerAllureReportService {
     }
     if (_isServiceTestName(request.testName)) return;
 
-    final runtime = _ensureTestRuntime(request.testName);
+    final runtime = _ensureActiveRuntime(request.testName);
+    _runtimeUuidByLogEntryId[logEntryId] = runtime.uuid;
+    _lastStepIndexByLogEntryId.remove(logEntryId);
 
     for (final sub in request.subEntries) {
       final subMs = _usToMs(sub.time.toInt());
       runtime.touchAt(subMs);
 
+      final stepIndex = runtime.steps.length;
       runtime.steps.add(_buildStep(sub, subMs));
+      _lastStepIndexByLogEntryId[logEntryId] = stepIndex;
       runtime.logBuffer.writeln(_formatRawLogLine(sub, subMs));
     }
 
@@ -230,7 +195,7 @@ class ManagerAllureReportService {
   Future<void> _handleRunnerStateChange(RunnerStateChange request) async {
     if (_isServiceTestName(request.testName)) return;
 
-    final runtime = _ensureTestRuntime(request.testName);
+    final runtime = _ensureActiveRuntime(request.testName);
 
     final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
     runtime.touchAt(nowMs);
@@ -251,7 +216,7 @@ class ManagerAllureReportService {
     }
     if (_isServiceTestName(request.testName)) return;
 
-    final runtime = _ensureTestRuntime(request.testName);
+    final runtime = _ensureActiveRuntime(request.testName);
     final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
     runtime.touchAt(nowMs);
     runtime.status = runtime.status == 'failed' ? 'failed' : 'broken';
@@ -272,7 +237,7 @@ class ManagerAllureReportService {
     }
     if (_isServiceTestName(request.testName)) return;
 
-    final runtime = _ensureTestRuntime(request.testName);
+    final runtime = _ensureActiveRuntime(request.testName);
     final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
     runtime.touchAt(nowMs);
     runtime.logBuffer.writeln('RUNNER MESSAGE: ${request.message}');
@@ -290,15 +255,38 @@ class ManagerAllureReportService {
       return;
     }
     if (_isSetUpAllServiceTestName(testName)) {
-      _deferredSetUpAllAttachments.add(
-        _PendingSnapshot(name: request.name, image: request.image as Uint8List),
-      );
+      final deferredStepIndex =
+          _deferredSetUpAllLastStepIndexByLogEntryId[logEntryId];
+      if (deferredStepIndex == null) {
+        _deferredSetUpAllAttachments.add(_PendingSnapshot(
+            name: request.name, image: request.image as Uint8List));
+      } else {
+        _attachSnapshotToStep(
+          steps: _deferredSetUpAllSteps,
+          stepIndex: deferredStepIndex,
+          snapshotName: 'setUpAll:${request.name}',
+          bytes: request.image as Uint8List,
+        );
+      }
       return;
     }
     if (_isServiceTestName(testName)) return;
 
-    final runtime = _ensureTestRuntime(testName);
-    _attachSnapshotToRuntime(runtime, request.name, request.image as Uint8List);
+    final runtime = _runtimeByLogEntryId(logEntryId) ??
+        _activeRuntimeByTestName[testName] ??
+        _ensureActiveRuntime(testName);
+    final stepIndex = _lastStepIndexByLogEntryId[logEntryId];
+    if (stepIndex == null || runtime.finished) {
+      _attachSnapshotToRuntime(
+          runtime, request.name, request.image as Uint8List);
+    } else {
+      _attachSnapshotToStep(
+        steps: runtime.steps,
+        stepIndex: stepIndex,
+        snapshotName: request.name,
+        bytes: request.image as Uint8List,
+      );
+    }
   }
 
   void _attachSnapshotToRuntime(
@@ -317,6 +305,32 @@ class ManagerAllureReportService {
       'source': source,
       'type': _mimeTypeForExtension(extension),
     });
+  }
+
+  void _attachSnapshotToStep({
+    required List<Map<String, dynamic>> steps,
+    required int stepIndex,
+    required String snapshotName,
+    required Uint8List bytes,
+  }) {
+    if (stepIndex < 0 || stepIndex >= steps.length) return;
+    if (_resultsDirPath == null) return;
+
+    final extension = _detectImageExtension(bytes);
+    final source = _nextArtifactName('attachment', extension);
+    final path = '$_resultsDirPath$source';
+    File(path).writeAsBytesSync(bytes, flush: true);
+
+    final step = steps[stepIndex];
+    final attachments =
+        (step['attachments'] as List?)?.cast<Map<String, dynamic>>() ??
+            <Map<String, dynamic>>[];
+    attachments.add({
+      'name': snapshotName.isEmpty ? 'snapshot' : snapshotName,
+      'source': source,
+      'type': _mimeTypeForExtension(extension),
+    });
+    step['attachments'] = attachments;
   }
 
   Future<void> _finalize(_AllureTestRuntime runtime) async {
@@ -353,6 +367,12 @@ class ManagerAllureReportService {
       'steps': runtime.steps,
       'attachments': runtime.attachments,
       'labels': labels,
+      'parameters': [
+        {
+          'name': 'retryAttempt',
+          'value': runtime.attemptIndex.toString(),
+        },
+      ],
     };
     if (runtime.statusDetails != null) {
       result['statusDetails'] = runtime.statusDetails;
@@ -361,6 +381,11 @@ class ManagerAllureReportService {
     final resultFileName = '${runtime.uuid}-result.json';
     final resultPath = '$_resultsDirPath$resultFileName';
     File(resultPath).writeAsStringSync(jsonEncode(result), flush: true);
+
+    final active = _activeRuntimeByTestName[runtime.testName];
+    if (identical(active, runtime)) {
+      _activeRuntimeByTestName.remove(runtime.testName);
+    }
   }
 
   List<Map<String, String>> _suiteLabelsForTest(String testName) {
@@ -399,15 +424,22 @@ class ManagerAllureReportService {
     ];
   }
 
-  _AllureTestRuntime _ensureTestRuntime(String testName) {
-    final runtime = _tests.putIfAbsent(
-      testName,
-      () => _AllureTestRuntime(
-        uuid: _nextUuid(),
-        testName: testName,
-        fullName: testName,
-      ),
+  _AllureTestRuntime _ensureActiveRuntime(String testName) {
+    final active = _activeRuntimeByTestName[testName];
+    if (active != null && !active.finished) {
+      return active;
+    }
+
+    final nextAttempt = (_attemptCountByTestName[testName] ?? 0) + 1;
+    _attemptCountByTestName[testName] = nextAttempt;
+    final runtime = _AllureTestRuntime(
+      uuid: _nextUuid(),
+      testName: testName,
+      fullName: testName,
+      attemptIndex: nextAttempt,
     );
+    _runtimeByUuid[runtime.uuid] = runtime;
+    _activeRuntimeByTestName[testName] = runtime;
     _injectDeferredSetUpAllDataIfNeeded(runtime);
     return runtime;
   }
@@ -453,14 +485,39 @@ class ManagerAllureReportService {
     if (pendingSnapshots == null) return;
 
     if (_isSetUpAllServiceTestName(testName)) {
-      _deferredSetUpAllAttachments.addAll(pendingSnapshots);
+      final deferredStepIndex =
+          _deferredSetUpAllLastStepIndexByLogEntryId[logEntryId];
+      if (deferredStepIndex == null) {
+        _deferredSetUpAllAttachments.addAll(pendingSnapshots);
+      } else {
+        for (final pending in pendingSnapshots) {
+          _attachSnapshotToStep(
+            steps: _deferredSetUpAllSteps,
+            stepIndex: deferredStepIndex,
+            snapshotName: 'setUpAll:${pending.name}',
+            bytes: pending.image,
+          );
+        }
+      }
       return;
     }
     if (_isServiceTestName(testName)) return;
 
-    final runtime = _ensureTestRuntime(testName);
+    final runtime = _runtimeByLogEntryId(logEntryId) ??
+        _activeRuntimeByTestName[testName] ??
+        _ensureActiveRuntime(testName);
+    final stepIndex = _lastStepIndexByLogEntryId[logEntryId];
     for (final pending in pendingSnapshots) {
-      _attachSnapshotToRuntime(runtime, pending.name, pending.image);
+      if (stepIndex == null || runtime.finished) {
+        _attachSnapshotToRuntime(runtime, pending.name, pending.image);
+      } else {
+        _attachSnapshotToStep(
+          steps: runtime.steps,
+          stepIndex: stepIndex,
+          snapshotName: pending.name,
+          bytes: pending.image,
+        );
+      }
     }
   }
 
@@ -559,30 +616,28 @@ class ManagerAllureReportService {
     return '${timestamp}_${_uuidCounter}_$rand';
   }
 
+  _AllureTestRuntime? _runtimeByLogEntryId(int logEntryId) {
+    final runtimeUuid = _runtimeUuidByLogEntryId[logEntryId];
+    if (runtimeUuid == null) return null;
+    return _runtimeByUuid[runtimeUuid];
+  }
+
   Future<void> _ensureActiveRunContext() async {
-    final baseDirPath = await GetIt.I.get<FsService>().getBaseDataDirectory();
     final resultsDirPath =
         await GetIt.I.get<FsService>().getActiveSuperRunDataSubDirectory(
               category: 'AllureResults',
             );
-    final reportDirPath =
-        await GetIt.I.get<FsService>().getActiveSuperRunDataSubDirectory(
-              category: 'AllureReport',
-            );
-    if (_resultsDirPath == resultsDirPath && _reportDirPath == reportDirPath) {
+    if (_resultsDirPath == resultsDirPath) {
       return;
     }
 
     _resultsDirPath = resultsDirPath;
-    _reportDirPath = reportDirPath;
-    _historyCacheDirPath = '$baseDirPath/AllureHistoryCache/';
     _resetState();
   }
 
   Future<void> _clearAllureResults() async {
     final resultsDirPath = _resultsDirPath;
-    final reportDirPath = _reportDirPath;
-    if (resultsDirPath == null || reportDirPath == null) return;
+    if (resultsDirPath == null) return;
 
     final resultsDir = Directory(resultsDirPath);
     if (resultsDir.existsSync()) {
@@ -590,43 +645,7 @@ class ManagerAllureReportService {
     }
     await resultsDir.create(recursive: true);
 
-    final reportDir = Directory(reportDirPath);
-    if (reportDir.existsSync()) {
-      await reportDir.delete(recursive: true);
-    }
-    await reportDir.create(recursive: true);
-
     _resetState();
-  }
-
-  Future<void> _hydrateHistoryIntoResults() async {
-    final resultsDirPath = _resultsDirPath;
-    final historyCacheDirPath = _historyCacheDirPath;
-    if (resultsDirPath == null || historyCacheDirPath == null) return;
-
-    final cacheDir = Directory(historyCacheDirPath);
-    if (!cacheDir.existsSync()) return;
-
-    final targetDir = Directory('${resultsDirPath}history/');
-    if (targetDir.existsSync()) {
-      await targetDir.delete(recursive: true);
-    }
-    await _copyDirectory(cacheDir, targetDir);
-  }
-
-  Future<void> _persistHistoryFromReportDir() async {
-    final reportDirPath = _reportDirPath;
-    final historyCacheDirPath = _historyCacheDirPath;
-    if (reportDirPath == null || historyCacheDirPath == null) return;
-
-    final reportHistoryDir = Directory('${reportDirPath}history/');
-    if (!reportHistoryDir.existsSync()) return;
-
-    final cacheDir = Directory(historyCacheDirPath);
-    if (cacheDir.existsSync()) {
-      await cacheDir.delete(recursive: true);
-    }
-    await _copyDirectory(reportHistoryDir, cacheDir);
   }
 
   Future<void> _copyDirectory(Directory source, Directory target) async {
@@ -746,10 +765,15 @@ class ManagerAllureReportService {
   }
 
   void _resetState() {
-    _tests.clear();
+    _activeRuntimeByTestName.clear();
+    _attemptCountByTestName.clear();
+    _runtimeByUuid.clear();
     _testNameByLogEntryId.clear();
+    _runtimeUuidByLogEntryId.clear();
+    _lastStepIndexByLogEntryId.clear();
     _pendingSnapshotsByLogEntryId.clear();
     _deferredSetUpAllSteps.clear();
+    _deferredSetUpAllLastStepIndexByLogEntryId.clear();
     _deferredSetUpAllAttachments.clear();
     _deferredSetUpAllLogBuffer = StringBuffer();
     _deferredSetUpAllInjected = false;
@@ -758,34 +782,54 @@ class ManagerAllureReportService {
     _uuidCounter = 0;
   }
 
-  Future<bool> _startAllureOpenDetached(String reportDirPath) async {
+  Future<bool> _openUrlDetached(String url) async {
     try {
-      final process = await Process.start(
-        'allure',
-        ['open', reportDirPath],
+      if (Platform.isMacOS) {
+        await Process.start(
+          'open',
+          [url],
+          runInShell: true,
+          mode: ProcessStartMode.detached,
+        );
+        return true;
+      }
+      if (Platform.isWindows) {
+        await Process.start(
+          'cmd',
+          ['/c', 'start', '', url],
+          runInShell: true,
+          mode: ProcessStartMode.detached,
+        );
+        return true;
+      }
+      await Process.start(
+        'xdg-open',
+        [url],
         runInShell: true,
         mode: ProcessStartMode.detached,
       );
-      Log.i(_kTag, 'allure open detached pid=${process.pid}');
       return true;
     } catch (e, s) {
-      Log.e(_kTag, 'allure open failed e=$e s=$s');
+      Log.e(_kTag, 'open url failed e=$e s=$s url=$url');
       return false;
     }
   }
 
   final _random = Random();
-  final _tests = <String, _AllureTestRuntime>{};
+  final _activeRuntimeByTestName = <String, _AllureTestRuntime>{};
+  final _attemptCountByTestName = <String, int>{};
+  final _runtimeByUuid = <String, _AllureTestRuntime>{};
   final _testNameByLogEntryId = <int, String>{};
+  final _runtimeUuidByLogEntryId = <int, String>{};
+  final _lastStepIndexByLogEntryId = <int, int>{};
   final _pendingSnapshotsByLogEntryId = <int, List<_PendingSnapshot>>{};
   final _deferredSetUpAllSteps = <Map<String, dynamic>>[];
+  final _deferredSetUpAllLastStepIndexByLogEntryId = <int, int>{};
   final _deferredSetUpAllAttachments = <_PendingSnapshot>[];
   StringBuffer _deferredSetUpAllLogBuffer = StringBuffer();
   bool _deferredSetUpAllInjected = false;
   SuiteInfo? _suiteInfo;
   String? _resultsDirPath;
-  String? _reportDirPath;
-  String? _historyCacheDirPath;
   String? _lastAutoPublishedSuperRunId;
   bool _autoPublishInProgress = false;
   int _artifactCounter = 0;
@@ -819,6 +863,7 @@ class _AllureTestRuntime {
   final String historyId;
   final String testName;
   final String fullName;
+  final int attemptIndex;
   final List<Map<String, dynamic>> steps = [];
   final List<Map<String, dynamic>> attachments = [];
   final StringBuffer logBuffer = StringBuffer();
@@ -833,6 +878,7 @@ class _AllureTestRuntime {
     required this.uuid,
     required this.testName,
     required this.fullName,
+    required this.attemptIndex,
   }) : historyId = testName;
 
   int get startMs => _startMs ?? DateTime.now().toUtc().millisecondsSinceEpoch;
