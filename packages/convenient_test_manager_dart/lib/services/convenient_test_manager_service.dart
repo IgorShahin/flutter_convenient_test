@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:convenient_test_common_dart/convenient_test_common_dart.dart';
+import 'package:convenient_test_manager_dart/services/allure_report_service.dart';
 import 'package:convenient_test_manager_dart/services/report_handler_service.dart';
 import 'package:convenient_test_manager_dart/services/report_saver_service.dart';
 import 'package:convenient_test_manager_dart/stores/worker_super_run_store.dart';
@@ -42,6 +43,22 @@ class ConvenientTestManagerService extends ConvenientTestManagerServiceBase {
       // NOTE *first* handle by ReportHandlerService, *then* by ReportSaverService,
       //      because ReportHandlerService may let ReportSaverService change target file
       await GetIt.I.get<ManagerReportSaverService>().save(request);
+
+      final tearDownItems = request.items
+          .where((e) => e.whichSubType() == ReportItem_SubType.tearDownAll)
+          .map((e) => e.tearDownAll)
+          .toList();
+      final hasExecutedTests = tearDownItems.any(
+        (e) => e.resolvedExecutionFilter.allowExecuteTestNames.isNotEmpty,
+      );
+      if (tearDownItems.isNotEmpty &&
+          hasExecutedTests &&
+          _workerSuperRunStore.currSuperRunController.superRunStatus ==
+              WorkerSuperRunStatus.testAllDone) {
+        unawaited(GetIt.I
+            .get<ManagerAllureReportService>()
+            .autoPublishToDockerIfConfigured());
+      }
     });
   }
 

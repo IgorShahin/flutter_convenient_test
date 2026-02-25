@@ -7,11 +7,20 @@ import 'dart:typed_data';
 import 'package:convenient_test_common_dart/convenient_test_common_dart.dart';
 import 'package:convenient_test_manager_dart/misc/runtime_platform.dart';
 import 'package:convenient_test_manager_dart/services/fs_service.dart';
+import 'package:convenient_test_manager_dart/stores/worker_super_run_store.dart';
 import 'package:get_it/get_it.dart';
 
 class ManagerAllureReportService {
   static const _kTag = 'ManagerAllureReportService';
   static const _kVideoChunkSnapshotPrefix = '__ct_video_chunk__';
+  static const _kAutoPublishEnabledEnvKey =
+      'CONVENIENT_TEST_ALLURE_DOCKER_AUTO_PUBLISH';
+  static const _kAutoPublishResultsDirEnvKey =
+      'CONVENIENT_TEST_ALLURE_DOCKER_RESULTS_DIR';
+  static const _kAutoPublishApiBaseUrlEnvKey =
+      'CONVENIENT_TEST_ALLURE_DOCKER_API_BASE_URL';
+  static const _kDefaultDockerApiBaseUrl =
+      'http://localhost:5050/allure-docker-service';
 
   Future<void> save(ReportCollection request) async {
     if (!supportsIoPlatform) return;
@@ -86,6 +95,83 @@ class ManagerAllureReportService {
     final started = await _startAllureOpenDetached(reportDirPath);
     if (!started) return;
     Log.i(_kTag, 'allure report opened via local server dir=$reportDirPath');
+  }
+
+  Future<void> autoPublishToDockerIfConfigured() async {
+    if (!supportsIoPlatform) return;
+
+    final enabled = _autoPublishEnabled();
+    if (!enabled) return;
+
+    final targetResultsDirPath =
+        environmentValue(_kAutoPublishResultsDirEnvKey);
+    if (targetResultsDirPath == null || targetResultsDirPath.trim().isEmpty) {
+      Log.w(
+        _kTag,
+        'auto-publish enabled but target results dir is empty. '
+        'Set $_kAutoPublishResultsDirEnvKey',
+      );
+      return;
+    }
+    final targetResultsDir = targetResultsDirPath.endsWith('/') ||
+            targetResultsDirPath.endsWith('\\')
+        ? targetResultsDirPath
+        : '$targetResultsDirPath${Platform.pathSeparator}';
+
+    final superRunId =
+        GetIt.I.get<WorkerSuperRunStore>().currSuperRunController.superRunId;
+    if (_lastAutoPublishedSuperRunId == superRunId) return;
+    if (_autoPublishInProgress) return;
+
+    _autoPublishInProgress = true;
+    try {
+      await _ensureActiveRunContext();
+      final sourceResultsDir = _resultsDirPath;
+      if (sourceResultsDir == null) return;
+
+      final hasResults = Directory(sourceResultsDir)
+          .listSync()
+          .whereType<File>()
+          .any((f) => f.path.endsWith('-result.json'));
+      if (!hasResults) {
+        Log.i(_kTag, 'auto-publish skip: no non-service allure result files');
+        return;
+      }
+
+      await _replaceDirectoryContents(
+        sourceDirPath: sourceResultsDir,
+        targetDirPath: targetResultsDir,
+      );
+
+      final apiBase = (() {
+        final value = environmentValue(_kAutoPublishApiBaseUrlEnvKey);
+        if (value == null || value.trim().isEmpty) {
+          return _kDefaultDockerApiBaseUrl;
+        }
+        return value;
+      })();
+
+      final responseCode = await _httpGetStatus('$apiBase/generate-report');
+      if (responseCode < 200 || responseCode >= 300) {
+        Log.w(
+          _kTag,
+          'auto-publish generate-report returned status=$responseCode url=$apiBase/generate-report',
+        );
+        return;
+      }
+
+      _lastAutoPublishedSuperRunId = superRunId;
+      Log.i(
+        _kTag,
+        'auto-publish success superRunId=$superRunId '
+        'reportUrl=$apiBase/latest-report '
+        'source=$sourceResultsDir target=$targetResultsDir',
+      );
+    } catch (e, s) {
+      Log.w(_kTag, 'auto-publish failed e=$e s=$s');
+    } finally {
+      _autoPublishInProgress = false;
+    }
   }
 
   Future<void> _handleItem(ReportItem item) async {
@@ -563,6 +649,41 @@ class ManagerAllureReportService {
     }
   }
 
+  Future<void> _replaceDirectoryContents({
+    required String sourceDirPath,
+    required String targetDirPath,
+  }) async {
+    final source = Directory(sourceDirPath);
+    final target = Directory(targetDirPath);
+    if (!source.existsSync()) return;
+    if (target.existsSync()) {
+      await target.delete(recursive: true);
+    }
+    await _copyDirectory(source, target);
+  }
+
+  Future<int> _httpGetStatus(String url) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
+    try {
+      final req = await client.getUrl(Uri.parse(url));
+      final resp = await req.close().timeout(const Duration(seconds: 5));
+      await resp.drain<void>();
+      return resp.statusCode;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  bool _autoPublishEnabled() {
+    final value = environmentValue(_kAutoPublishEnabledEnvKey);
+    if (value == null) return false;
+    final normalized = value.trim().toLowerCase();
+    return normalized == '1' ||
+        normalized == 'true' ||
+        normalized == 'yes' ||
+        normalized == 'on';
+  }
+
   void _resetState() {
     _tests.clear();
     _testNameByLogEntryId.clear();
@@ -604,6 +725,8 @@ class ManagerAllureReportService {
   String? _resultsDirPath;
   String? _reportDirPath;
   String? _historyCacheDirPath;
+  String? _lastAutoPublishedSuperRunId;
+  bool _autoPublishInProgress = false;
   int _artifactCounter = 0;
   int _uuidCounter = 0;
 }
