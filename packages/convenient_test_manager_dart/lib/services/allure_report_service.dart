@@ -672,10 +672,16 @@ class ManagerAllureReportService {
     final source = Directory(sourceDirPath);
     final target = Directory(targetDirPath);
     if (!source.existsSync()) return;
-    if (target.existsSync()) {
-      await target.delete(recursive: true);
-    }
+    await target.create(recursive: true);
+    await _clearDirectoryContents(target);
     await _copyDirectory(source, target);
+  }
+
+  Future<void> _clearDirectoryContents(Directory directory) async {
+    if (!directory.existsSync()) return;
+    await for (final entity in directory.list(followLinks: false)) {
+      await entity.delete(recursive: true);
+    }
   }
 
   Future<int> _httpGetStatus(String url) async {
