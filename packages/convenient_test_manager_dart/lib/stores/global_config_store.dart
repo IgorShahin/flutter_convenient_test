@@ -27,6 +27,9 @@ abstract class _GlobalConfig with Store {
   bool enableReportSaver;
 
   @observable
+  bool retryMode;
+
+  @observable
   String? goldenDiffGitRepo;
 
   @observable
@@ -39,6 +42,7 @@ abstract class _GlobalConfig with Store {
     required this.isolationMode,
     required this.enableVideoRecording,
     required this.enableReportSaver,
+    required this.retryMode,
     required this.goldenDiffGitRepo,
     required this.runOnly,
     required this.reportSavePath,
@@ -53,6 +57,7 @@ sealed class GlobalConfigNullable with _$GlobalConfigNullable {
     bool? isolationMode,
     bool? enableVideoRecording,
     bool? enableReportSaver,
+    bool? retryMode,
     String? goldenDiffGitRepo,
     String? runOnly,
     String? reportSavePath,
@@ -114,6 +119,8 @@ sealed class GlobalConfigNullable with _$GlobalConfigNullable {
           'CONVENIENT_TEST_ENABLE_VIDEO_RECORDING')),
       enableReportSaver: _stringToNullableBool(
           const String.fromEnvironment('CONVENIENT_TEST_ENABLE_REPORT_SAVER')),
+      retryMode: _stringToNullableBool(
+          const String.fromEnvironment('CONVENIENT_TEST_RETRY_MODE')),
       goldenDiffGitRepo: _emptyToNull(
           const String.fromEnvironment('CONVENIENT_TEST_GOLDEN_DIFF_GIT_REPO')),
       runOnly: _emptyToNull(
@@ -129,6 +136,7 @@ sealed class GlobalConfigNullable with _$GlobalConfigNullable {
           ..addFlag('isolation-mode', defaultsTo: null)
           ..addFlag('enable-video-recording', defaultsTo: null)
           ..addFlag('enable-report-saver', defaultsTo: null)
+          ..addFlag('retry-mode', defaultsTo: null)
           ..addOption('run-only', defaultsTo: null)
           ..addOption('golden-diff-git-repo', defaultsTo: null)
           ..addOption('report-save-path', defaultsTo: null))
@@ -138,6 +146,7 @@ sealed class GlobalConfigNullable with _$GlobalConfigNullable {
       isolationMode: results['isolation-mode'] as bool?,
       enableVideoRecording: results['enable-video-recording'] as bool?,
       enableReportSaver: results['enable-report-saver'] as bool?,
+      retryMode: results['retry-mode'] as bool?,
       goldenDiffGitRepo: results['golden-diff-git-repo'] as String?,
       runOnly: results['run-only'] as String?,
       reportSavePath: results['report-save-path'] as String?,
@@ -161,6 +170,7 @@ extension ExtGlobalConfigNullable on GlobalConfigNullable {
         enableVideoRecording:
             other.enableVideoRecording ?? enableVideoRecording,
         enableReportSaver: other.enableReportSaver ?? enableReportSaver,
+        retryMode: other.retryMode ?? retryMode,
         goldenDiffGitRepo: other.goldenDiffGitRepo ?? goldenDiffGitRepo,
         runOnly: other.runOnly ?? runOnly,
         reportSavePath: other.reportSavePath ?? reportSavePath,
@@ -170,6 +180,7 @@ extension ExtGlobalConfigNullable on GlobalConfigNullable {
         isolationMode: isolationMode ?? false,
         enableVideoRecording: enableVideoRecording ?? true,
         enableReportSaver: enableReportSaver ?? false,
+        retryMode: retryMode ?? true,
         goldenDiffGitRepo: goldenDiffGitRepo,
         runOnly: runOnly,
         reportSavePath: reportSavePath,

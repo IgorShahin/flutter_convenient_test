@@ -21,6 +21,9 @@ class ManagerAllureReportService {
       'CONVENIENT_TEST_ALLURE_DOCKER_API_BASE_URL';
   static const _kDefaultDockerApiBaseUrl =
       'http://localhost:5050/allure-docker-service';
+  static const _kConfigEnableKey = 'enableAllureDockerAutoPublish';
+  static const _kConfigResultsDirKey = 'allureDockerResultsDir';
+  static const _kConfigApiBaseUrlKey = 'allureDockerApiBaseUrl';
 
   Future<void> save(ReportCollection request) async {
     if (!supportsIoPlatform) return;
@@ -100,16 +103,16 @@ class ManagerAllureReportService {
   Future<void> autoPublishToDockerIfConfigured() async {
     if (!supportsIoPlatform) return;
 
-    final enabled = _autoPublishEnabled();
-    if (!enabled) return;
+    final settings = await _resolveAutoPublishSettings();
+    if (!settings.enabled) return;
 
-    final targetResultsDirPath =
-        environmentValue(_kAutoPublishResultsDirEnvKey);
+    final targetResultsDirPath = settings.resultsDirPath;
     if (targetResultsDirPath == null || targetResultsDirPath.trim().isEmpty) {
       Log.w(
         _kTag,
         'auto-publish enabled but target results dir is empty. '
-        'Set $_kAutoPublishResultsDirEnvKey',
+        'Set $_kConfigResultsDirKey in convenient_test.json or '
+        '$_kAutoPublishResultsDirEnvKey env',
       );
       return;
     }
@@ -143,13 +146,7 @@ class ManagerAllureReportService {
         targetDirPath: targetResultsDir,
       );
 
-      final apiBase = (() {
-        final value = environmentValue(_kAutoPublishApiBaseUrlEnvKey);
-        if (value == null || value.trim().isEmpty) {
-          return _kDefaultDockerApiBaseUrl;
-        }
-        return value;
-      })();
+      final apiBase = settings.apiBaseUrl;
 
       final responseCode = await _httpGetStatus('$apiBase/generate-report');
       if (responseCode < 200 || responseCode >= 300) {
@@ -684,6 +681,70 @@ class ManagerAllureReportService {
         normalized == 'on';
   }
 
+  Future<_AllureAutoPublishSettings> _resolveAutoPublishSettings() async {
+    final configJson = await _readConvenientTestConfigJson();
+    final configEnabled = _toNullableBool(configJson?[_kConfigEnableKey]);
+    final envEnabled = _autoPublishEnabled();
+    final enabled = configEnabled ?? envEnabled;
+
+    final configResultsDir =
+        _toNullableString(configJson?[_kConfigResultsDirKey]);
+    final envResultsDir = environmentValue(_kAutoPublishResultsDirEnvKey);
+
+    final configApiBaseUrl =
+        _toNullableString(configJson?[_kConfigApiBaseUrlKey]);
+    final envApiBaseUrl = environmentValue(_kAutoPublishApiBaseUrlEnvKey);
+    final apiBaseUrl = (() {
+      final raw = configApiBaseUrl ?? envApiBaseUrl;
+      if (raw == null || raw.trim().isEmpty) return _kDefaultDockerApiBaseUrl;
+      return raw;
+    })();
+
+    return _AllureAutoPublishSettings(
+      enabled: enabled,
+      resultsDirPath: configResultsDir ?? envResultsDir,
+      apiBaseUrl: apiBaseUrl,
+    );
+  }
+
+  Future<Map<String, dynamic>?> _readConvenientTestConfigJson() async {
+    try {
+      final homeDirectory = environmentValue('HOME');
+      if (homeDirectory == null || homeDirectory.trim().isEmpty) return null;
+      final configFilePath = '$homeDirectory/.config/convenient_test.json';
+      final file = File(configFilePath);
+      if (!await file.exists()) return null;
+      final text = await file.readAsString();
+      final decoded = jsonDecode(text);
+      if (decoded is Map<String, dynamic>) return decoded;
+      return null;
+    } catch (e, s) {
+      Log.w(_kTag, 'read convenient_test.json failed e=$e s=$s');
+      return null;
+    }
+  }
+
+  bool? _toNullableBool(Object? value) {
+    if (value is bool) return value;
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+      if (normalized == 'true' || normalized == '1' || normalized == 'yes') {
+        return true;
+      }
+      if (normalized == 'false' || normalized == '0' || normalized == 'no') {
+        return false;
+      }
+    }
+    return null;
+  }
+
+  String? _toNullableString(Object? value) {
+    if (value is! String) return null;
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+    return trimmed;
+  }
+
   void _resetState() {
     _tests.clear();
     _testNameByLogEntryId.clear();
@@ -729,6 +790,18 @@ class ManagerAllureReportService {
   bool _autoPublishInProgress = false;
   int _artifactCounter = 0;
   int _uuidCounter = 0;
+}
+
+class _AllureAutoPublishSettings {
+  final bool enabled;
+  final String? resultsDirPath;
+  final String apiBaseUrl;
+
+  const _AllureAutoPublishSettings({
+    required this.enabled,
+    required this.resultsDirPath,
+    required this.apiBaseUrl,
+  });
 }
 
 class _PendingSnapshot {

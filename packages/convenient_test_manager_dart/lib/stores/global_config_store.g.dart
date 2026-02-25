@@ -12,6 +12,7 @@ _$GlobalConfigNullableImpl _$$GlobalConfigNullableImplFromJson(
       isolationMode: json['isolationMode'] as bool?,
       enableVideoRecording: json['enableVideoRecording'] as bool?,
       enableReportSaver: json['enableReportSaver'] as bool?,
+      retryMode: json['retryMode'] as bool?,
       goldenDiffGitRepo: json['goldenDiffGitRepo'] as String?,
       runOnly: json['runOnly'] as String?,
       reportSavePath: json['reportSavePath'] as String?,
@@ -23,6 +24,7 @@ Map<String, dynamic> _$$GlobalConfigNullableImplToJson(
       'isolationMode': instance.isolationMode,
       'enableVideoRecording': instance.enableVideoRecording,
       'enableReportSaver': instance.enableReportSaver,
+      'retryMode': instance.retryMode,
       'goldenDiffGitRepo': instance.goldenDiffGitRepo,
       'runOnly': instance.runOnly,
       'reportSavePath': instance.reportSavePath,
@@ -84,6 +86,22 @@ mixin _$GlobalConfig on _GlobalConfig, Store {
     });
   }
 
+  late final _$retryModeAtom =
+      Atom(name: '_GlobalConfig.retryMode', context: context);
+
+  @override
+  bool get retryMode {
+    _$retryModeAtom.reportRead();
+    return super.retryMode;
+  }
+
+  @override
+  set retryMode(bool value) {
+    _$retryModeAtom.reportWrite(value, super.retryMode, () {
+      super.retryMode = value;
+    });
+  }
+
   late final _$goldenDiffGitRepoAtom =
       Atom(name: '_GlobalConfig.goldenDiffGitRepo', context: context);
 
@@ -138,6 +156,7 @@ mixin _$GlobalConfig on _GlobalConfig, Store {
 isolationMode: ${isolationMode},
 enableVideoRecording: ${enableVideoRecording},
 enableReportSaver: ${enableReportSaver},
+retryMode: ${retryMode},
 goldenDiffGitRepo: ${goldenDiffGitRepo},
 runOnly: ${runOnly},
 reportSavePath: ${reportSavePath}

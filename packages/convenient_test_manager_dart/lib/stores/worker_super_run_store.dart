@@ -37,7 +37,10 @@ abstract class _WorkerSuperRunStore with Store {
 
   bool get retryMode => flakyTestTotalAttemptCount > 1;
 
-  set retryMode(bool enable) => flakyTestTotalAttemptCount = enable ? 2 : 1;
+  set retryMode(bool enable) {
+    flakyTestTotalAttemptCount = enable ? 2 : 1;
+    GlobalConfigStore.config.retryMode = enable;
+  }
 
   @observable
   bool autoUpdateGoldenFiles = false;
@@ -84,6 +87,7 @@ abstract class _WorkerSuperRunStore with Store {
   }
 
   _WorkerSuperRunStore() {
+    retryMode = GlobalConfigStore.config.retryMode;
     reaction((_) => isolationMode, _handleIsolationModeChange);
   }
 
