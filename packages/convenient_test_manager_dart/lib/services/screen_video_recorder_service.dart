@@ -194,9 +194,9 @@ class _ScreenVideoRecorderServiceMacosDesktop
 
   _CaptureRect? _resolveCaptureRect() {
     final byTitle = _resolveCaptureRectByTitle();
-    if (byTitle != null) return byTitle;
+    if (byTitle != null) return _cropTopPanelFromRect(byTitle);
     final byWorkerPid = _resolveCaptureRectByWorkerVmServicePid();
-    if (byWorkerPid != null) return byWorkerPid;
+    if (byWorkerPid != null) return _cropTopPanelFromRect(byWorkerPid);
     return null;
   }
 
@@ -291,6 +291,29 @@ end run
           _kTag, 'resolveCaptureRectByWorkerVmServicePid pid=$pid rect=$rect');
     }
     return rect;
+  }
+
+  _CaptureRect _cropTopPanelFromRect(_CaptureRect rawRect) {
+    const kDefaultTopInsetPx = 28;
+
+    final parsedInset = (() {
+      final raw = Platform.environment['CONVENIENT_TEST_RECORD_TOP_INSET_PX'];
+      return raw == null ? null : int.tryParse(raw);
+    })();
+    final topInsetPx = parsedInset == null
+        ? kDefaultTopInsetPx
+        : (parsedInset < 0 ? 0 : (parsedInset > 5000 ? 5000 : parsedInset));
+
+    final maxInset = rawRect.height > 100 ? rawRect.height - 100 : 0;
+    final safeInset = topInsetPx > maxInset ? maxInset : topInsetPx;
+    if (safeInset <= 0) return rawRect;
+
+    return _CaptureRect(
+      x: rawRect.x,
+      y: rawRect.y + safeInset,
+      width: rawRect.width,
+      height: rawRect.height - safeInset,
+    );
   }
 }
 

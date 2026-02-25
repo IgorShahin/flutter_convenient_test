@@ -305,7 +305,8 @@ class _WorkerVideoRecordingServiceMacos
 
   @override
   Future<Process> startProcess(String targetPath) async {
-    final rect = _resolveMacosOwnWindowRect();
+    final rawRect = _resolveMacosOwnWindowRect();
+    final rect = rawRect == null ? null : _cropTopPanelFromRect(rawRect);
     if (rect != null) {
       final byWindow = await _startScreencapture(
         targetPath: targetPath,
@@ -313,7 +314,10 @@ class _WorkerVideoRecordingServiceMacos
         modeLabel: 'window',
       );
       if (byWindow != null) {
-        Log.i(_kTag, 'startRecord capture own app window rect=$rect');
+        Log.i(
+          _kTag,
+          'startRecord capture own app window rect=$rect rawRect=$rawRect',
+        );
         return byWindow;
       }
       Log.w(
@@ -775,6 +779,28 @@ end run
   );
   if (result.exitCode != 0) return null;
   return _CaptureRect.tryParse((result.stdout as String).trim());
+}
+
+_CaptureRect _cropTopPanelFromRect(_CaptureRect rawRect) {
+  const kDefaultTopInsetPx = 28;
+
+  final parsedInset = (() {
+    final raw = Platform.environment['CONVENIENT_TEST_RECORD_TOP_INSET_PX'];
+    return raw == null ? null : int.tryParse(raw);
+  })();
+  final topInsetPx =
+      parsedInset == null ? kDefaultTopInsetPx : max(0, min(parsedInset, 5000));
+
+  final maxInset = max(0, rawRect.height - 100);
+  final safeInset = min(topInsetPx, maxInset);
+  if (safeInset <= 0) return rawRect;
+
+  return _CaptureRect(
+    x: rawRect.x,
+    y: rawRect.y + safeInset,
+    width: rawRect.width,
+    height: rawRect.height - safeInset,
+  );
 }
 
 String? _resolveWindowsMainWindowHandleByCurrentPid() {
