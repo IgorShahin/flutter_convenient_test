@@ -566,15 +566,31 @@ class _WorkerVideoRecordingServiceWindows
 
   @override
   Future<Process> startProcess(String targetPath) async {
+    final captureRect = _resolveWindowsContentRectByCurrentPid();
     final hwnd = _resolveWindowsMainWindowHandleByCurrentPid();
-    final input = hwnd == null ? 'desktop' : 'hwnd=$hwnd';
-    if (hwnd == null) {
+
+    late final List<String> inputArgs;
+    if (captureRect != null) {
+      inputArgs = [
+        '-offset_x',
+        '${captureRect.x}',
+        '-offset_y',
+        '${captureRect.y}',
+        '-video_size',
+        '${captureRect.width}x${captureRect.height}',
+        '-i',
+        'desktop',
+      ];
+      Log.i(_kTag, 'Capture own app content area on Windows rect=$captureRect');
+    } else if (hwnd != null) {
+      inputArgs = ['-i', 'hwnd=$hwnd'];
+      Log.i(_kTag, 'Capture own app window by hwnd=$hwnd');
+    } else {
+      inputArgs = ['-i', 'desktop'];
       Log.w(
         _kTag,
-        'Cannot resolve own app window on Windows; fallback to desktop',
+        'Cannot resolve own app content/window on Windows; fallback to desktop',
       );
-    } else {
-      Log.i(_kTag, 'Capture own app window by hwnd=$hwnd');
     }
 
     final process = await Process.start('ffmpeg', [
@@ -585,8 +601,7 @@ class _WorkerVideoRecordingServiceWindows
       'gdigrab',
       '-framerate',
       '8',
-      '-i',
-      input,
+      ...inputArgs,
       '-vf',
       'scale=1280:-2',
       '-c:v',
@@ -644,6 +659,9 @@ class _WorkerVideoRecordingServiceLinux
   Future<Process> startProcess(String targetPath) async {
     final display = Platform.environment['DISPLAY'] ?? ':0';
     final windowId = _resolveLinuxWindowIdByCurrentPid();
+    final contentRect = windowId == null
+        ? null
+        : _resolveLinuxContentRectByWindowId(windowId);
 
     final args = <String>[
       '-y',
@@ -653,9 +671,20 @@ class _WorkerVideoRecordingServiceLinux
       'x11grab',
       '-framerate',
       '8',
-      if (windowId != null) ...['-window_id', windowId],
-      '-i',
-      display,
+      if (contentRect != null) ...[
+        '-video_size',
+        '${contentRect.width}x${contentRect.height}',
+        '-i',
+        '$display+${contentRect.x},${contentRect.y}',
+      ] else if (windowId != null) ...[
+        '-window_id',
+        windowId,
+        '-i',
+        display,
+      ] else ...[
+        '-i',
+        display,
+      ],
       '-vf',
       'scale=1280:-2',
       '-c:v',
@@ -671,11 +700,13 @@ class _WorkerVideoRecordingServiceLinux
       targetPath,
     ];
 
-    if (windowId == null) {
+    if (contentRect != null) {
+      Log.i(_kTag, 'Capture own app content area on Linux rect=$contentRect');
+    } else if (windowId != null) {
+      Log.i(_kTag, 'Capture own app window by X11 window_id=$windowId');
+    } else {
       Log.w(
           _kTag, 'Cannot resolve own app window on Linux; fallback to DISPLAY');
-    } else {
-      Log.i(_kTag, 'Capture own app window by X11 window_id=$windowId');
     }
 
     final process = await Process.start('ffmpeg', args);
@@ -831,6 +862,47 @@ try {
   return raw;
 }
 
+_CaptureRect? _resolveWindowsContentRectByCurrentPid() {
+  if (!Platform.isWindows) return null;
+
+  const script = r'''
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class User32 {
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
+  [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
+}
+"@
+try {
+  $p = Get-Process -Id $args[0] -ErrorAction Stop
+  $h = $p.MainWindowHandle
+  if ($h -eq 0) { "" ; exit 0 }
+  $rect = New-Object User32+RECT
+  if (-not [User32]::GetClientRect([intptr]$h, [ref]$rect)) { "" ; exit 0 }
+  $pt = New-Object User32+POINT
+  $pt.X = 0; $pt.Y = 0
+  if (-not [User32]::ClientToScreen([intptr]$h, [ref]$pt)) { "" ; exit 0 }
+  $w = $rect.Right - $rect.Left
+  $hgt = $rect.Bottom - $rect.Top
+  if ($w -le 0 -or $hgt -le 0) { "" ; exit 0 }
+  "$($pt.X),$($pt.Y),$w,$hgt"
+} catch {
+  ""
+}
+''';
+
+  final result = Process.runSync(
+    'powershell',
+    ['-NoProfile', '-Command', script, '$pid'],
+  );
+  if (result.exitCode != 0) return null;
+
+  return _CaptureRect.tryParse((result.stdout as String).trim());
+}
+
 String? _resolveLinuxWindowIdByCurrentPid() {
   if (!Platform.isLinux) return null;
 
@@ -843,4 +915,94 @@ String? _resolveLinuxWindowIdByCurrentPid() {
       .map((e) => e.trim())
       .firstWhere((e) => e.isNotEmpty, orElse: () => '');
   return first.isEmpty ? null : first;
+}
+
+_CaptureRect? _resolveLinuxContentRectByWindowId(String windowId) {
+  if (!Platform.isLinux) return null;
+
+  final xwin = Process.runSync('xwininfo', ['-id', windowId]);
+  if (xwin.exitCode != 0) return null;
+
+  final text = xwin.stdout as String;
+  final absX = _parseLabeledInt(text, 'Absolute upper-left X');
+  final absY = _parseLabeledInt(text, 'Absolute upper-left Y');
+  final width = _parseLabeledInt(text, 'Width');
+  final height = _parseLabeledInt(text, 'Height');
+  if (absX == null || absY == null || width == null || height == null) {
+    return null;
+  }
+  if (width <= 0 || height <= 0) return null;
+
+  // Prefer NET frame extents when window manager provides them.
+  final extents = _resolveLinuxFrameExtents(windowId);
+  if (extents != null) {
+    final x = absX + extents.left;
+    final y = absY + extents.top;
+    final w = width - extents.left - extents.right;
+    final h = height - extents.top - extents.bottom;
+    if (w > 0 && h > 0) {
+      return _CaptureRect(x: x, y: y, width: w, height: h);
+    }
+  }
+
+  // Fallback heuristic: xwininfo often reports client offset as "Relative ...".
+  final relX = _parseLabeledInt(text, 'Relative upper-left X') ?? 0;
+  final relY = _parseLabeledInt(text, 'Relative upper-left Y') ?? 0;
+  final safeRelX = relX < 0 ? 0 : relX;
+  final safeRelY = relY < 0 ? 0 : relY;
+  final x = absX + safeRelX;
+  final y = absY + safeRelY;
+  final w = width - safeRelX;
+  final h = height - safeRelY;
+  if (w <= 0 || h <= 0) return _CaptureRect(x: absX, y: absY, width: width, height: height);
+
+  return _CaptureRect(x: x, y: y, width: w, height: h);
+}
+
+_LinuxFrameExtents? _resolveLinuxFrameExtents(String windowId) {
+  final result = Process.runSync(
+    'xprop',
+    ['-id', windowId, '_NET_FRAME_EXTENTS'],
+  );
+  if (result.exitCode != 0) return null;
+
+  final text = (result.stdout as String).trim();
+  final match = RegExp(r'=\s*(-?\d+),\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)')
+      .firstMatch(text);
+  if (match == null) return null;
+
+  final left = int.tryParse(match.group(1)!);
+  final right = int.tryParse(match.group(2)!);
+  final top = int.tryParse(match.group(3)!);
+  final bottom = int.tryParse(match.group(4)!);
+  if (left == null || right == null || top == null || bottom == null) {
+    return null;
+  }
+
+  return _LinuxFrameExtents(
+    left: left < 0 ? 0 : left,
+    right: right < 0 ? 0 : right,
+    top: top < 0 ? 0 : top,
+    bottom: bottom < 0 ? 0 : bottom,
+  );
+}
+
+int? _parseLabeledInt(String text, String label) {
+  final match = RegExp('$label:\\s*(-?\\d+)', multiLine: true).firstMatch(text);
+  if (match == null) return null;
+  return int.tryParse(match.group(1)!);
+}
+
+class _LinuxFrameExtents {
+  final int left;
+  final int right;
+  final int top;
+  final int bottom;
+
+  const _LinuxFrameExtents({
+    required this.left,
+    required this.right,
+    required this.top,
+    required this.bottom,
+  });
 }
