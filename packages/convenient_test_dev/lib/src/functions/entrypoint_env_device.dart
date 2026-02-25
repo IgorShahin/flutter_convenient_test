@@ -179,6 +179,20 @@ Future<void> _firstSetUpAll() async {
   final reporterService = WorkerReportSaverService.I;
   if (reporterService == null) return;
 
+  final allowExecuteTestNames = myGetIt
+      .get<ConvenientTestExecutor>()
+      .resolvedExecutionFilter
+      .allowExecuteTestNames;
+  if (allowExecuteTestNames.isEmpty) {
+    Log.i(
+      'EntryPointEnvDevice',
+      'skip video recording in setUpAll because no tests will run '
+      '(resolvedExecutionFilter is empty)',
+    );
+    await reporterService.report(ReportItem(setUpAll: SetUpAll()));
+    return;
+  }
+
   await myGetIt.get<WorkerVideoRecordingService>().startRecord();
   await reporterService.report(ReportItem(setUpAll: SetUpAll()));
 }
