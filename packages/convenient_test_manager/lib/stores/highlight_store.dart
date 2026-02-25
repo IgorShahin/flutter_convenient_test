@@ -19,6 +19,7 @@ abstract class _HighlightStore extends HighlightStoreBase with Store {
   static const _kTag = 'HighlightStore';
   static const _kAutoJumpMinInterval = Duration(milliseconds: 220);
   static const _kAutoJumpDebounce = Duration(milliseconds: 80);
+  static const _kSuppressAutoJumpDefault = Duration(milliseconds: 450);
 
   @observable
   bool enableAutoExpand = true;
@@ -112,6 +113,7 @@ abstract class _HighlightStore extends HighlightStoreBase with Store {
     final homePageStore = GetIt.I.get<HomePageStore>();
 
     if (!highlightStore.enableAutoJump) return;
+    if (DateTime.now().isBefore(_suppressAutoJumpUntil)) return;
     if (highlightLogEntryId == null) return;
 
     final listViewIndexForHighlight =
@@ -196,6 +198,12 @@ abstract class _HighlightStore extends HighlightStoreBase with Store {
   int? _pendingAutoJumpIndex;
   int? _lastAutoJumpIndex;
   DateTime _lastAutoJumpAt = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _suppressAutoJumpUntil = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void suppressAutoJumpTemporarily(
+      [Duration duration = _kSuppressAutoJumpDefault]) {
+    _suppressAutoJumpUntil = DateTime.now().add(duration);
+  }
 }
 
 @immutable

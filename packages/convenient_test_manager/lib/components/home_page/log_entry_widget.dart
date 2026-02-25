@@ -84,7 +84,11 @@ class HomePageLogEntryWidget extends StatelessWidget {
         InkWell(
           onHover: (hovering) {
             if (highlightStore.enableHoverMode && hovering) {
-              _handleTapOrHover(interestLogSubEntry, targetState: true);
+              _handleTapOrHover(
+                interestLogSubEntry,
+                targetState: true,
+                fromHover: true,
+              );
             }
           },
           onTap: () =>
@@ -170,9 +174,15 @@ class HomePageLogEntryWidget extends StatelessWidget {
   }
 
   void _handleTapOrHover(LogSubEntry interestLogSubEntry,
-      {required bool targetState}) {
+      {required bool targetState, bool fromHover = false}) {
     final highlightStore = GetIt.I.get<HighlightStore>();
     final videoPlayerStore = GetIt.I.get<VideoPlayerStore>();
+
+    if (fromHover) {
+      // Hover can fire very frequently; suppress auto-jump briefly
+      // to avoid scroll jitter while syncing video position.
+      highlightStore.suppressAutoJumpTemporarily();
+    }
 
     highlightStore.highlightLogEntryId = targetState ? logEntryId : null;
     highlightStore.highlightTestEntryId = targetState ? testEntryId : null;
