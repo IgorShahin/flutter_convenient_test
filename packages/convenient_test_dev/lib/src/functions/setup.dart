@@ -24,3 +24,26 @@ void setUpOncePerRun(dynamic Function() body) {
     await Future.sync(body);
   });
 }
+
+/// Alias over [tearDown].
+///
+/// In isolation mode this runs after each executed test (as usual).
+@isTest
+void tearDownPerTest(dynamic Function() body) {
+  tearDown(() async {
+    convenientTestLog('TEARDOWN', 'tearDown');
+    await Future.sync(body);
+  });
+}
+
+/// Alias over [tearDownAll].
+///
+/// Note: in isolation mode each worker run is restarted between tests, so this
+/// executes once per worker run.
+@isTest
+void tearDownOncePerRun(dynamic Function() body) {
+  tearDownAll(() async {
+    convenientTestLog('TEARDOWN', 'tearDownAll');
+    await Future.sync(body);
+  });
+}
