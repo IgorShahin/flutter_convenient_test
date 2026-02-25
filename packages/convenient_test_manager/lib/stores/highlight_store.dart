@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:collection/collection.dart';
 import 'package:convenient_test_common_dart/convenient_test_common_dart.dart';
 import 'package:convenient_test_manager/stores/home_page_store.dart';
@@ -15,6 +17,8 @@ class HighlightStore = _HighlightStore with _$HighlightStore;
 
 abstract class _HighlightStore extends HighlightStoreBase with Store {
   static const _kTag = 'HighlightStore';
+  static const _kAutoJumpMinInterval = Duration(milliseconds: 220);
+  static const _kAutoJumpDebounce = Duration(milliseconds: 80);
 
   @observable
   bool enableAutoExpand = true;
@@ -62,6 +66,11 @@ abstract class _HighlightStore extends HighlightStoreBase with Store {
     highlightTestEntryId = null;
     highlightLogEntryId = null;
     highlightSnapshot = null;
+    _pendingAutoJump?.cancel();
+    _pendingAutoJump = null;
+    _pendingAutoJumpIndex = null;
+    _lastAutoJumpIndex = null;
+    _lastAutoJumpAt = DateTime.fromMillisecondsSinceEpoch(0);
   }
 
   _HighlightStore() {
@@ -134,8 +143,38 @@ abstract class _HighlightStore extends HighlightStoreBase with Store {
     final alignment = listViewIndexForHighlight < middleVisibleIndex ? .0 : .9;
     Log.d(_kTag,
         'jump to make index=$listViewIndexForHighlight at alignment=$alignment');
-    homePageStore.itemScrollController
-        .jumpTo(index: listViewIndexForHighlight, alignment: alignment);
+    _scheduleAutoJump(
+      index: listViewIndexForHighlight,
+      alignment: alignment,
+    );
+  }
+
+  void _scheduleAutoJump({required int index, required double alignment}) {
+    final homePageStore = GetIt.I.get<HomePageStore>();
+
+    if (_lastAutoJumpIndex == index &&
+        DateTime.now().difference(_lastAutoJumpAt) < _kAutoJumpMinInterval) {
+      return;
+    }
+
+    _pendingAutoJumpIndex = index;
+    _pendingAutoJump?.cancel();
+
+    final elapsed = DateTime.now().difference(_lastAutoJumpAt);
+    final wait = elapsed >= _kAutoJumpMinInterval
+        ? _kAutoJumpDebounce
+        : _kAutoJumpMinInterval - elapsed;
+
+    _pendingAutoJump = Timer(wait, () {
+      final targetIndex = _pendingAutoJumpIndex;
+      if (targetIndex == null) return;
+
+      _lastAutoJumpIndex = targetIndex;
+      _lastAutoJumpAt = DateTime.now();
+
+      homePageStore.itemScrollController
+          .jumpTo(index: targetIndex, alignment: alignment);
+    });
   }
 
   int? _calcListViewIndexForLogEntry({required int logEntryId}) {
@@ -153,6 +192,10 @@ abstract class _HighlightStore extends HighlightStoreBase with Store {
   }
 
   final _logStore = GetIt.I.get<LogStore>();
+  Timer? _pendingAutoJump;
+  int? _pendingAutoJumpIndex;
+  int? _lastAutoJumpIndex;
+  DateTime _lastAutoJumpAt = DateTime.fromMillisecondsSinceEpoch(0);
 }
 
 @immutable
