@@ -124,6 +124,13 @@ class HomePageHeaderPanel extends StatelessWidget {
                 ),
               ),
               _HeaderSwitch(
+                text: 'RecordVideo',
+                gs: GetSet.gs(
+                  () => workerSuperRunStore.enableVideoRecording,
+                  (v) => workerSuperRunStore.enableVideoRecording = v,
+                ),
+              ),
+              _HeaderSwitch(
                 text: 'Retry',
                 gs: GetSet.gs(
                   () => workerSuperRunStore.retryMode,

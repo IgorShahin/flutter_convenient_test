@@ -21,6 +21,7 @@ GlobalConfigNullable _$GlobalConfigNullableFromJson(Map<String, dynamic> json) {
 /// @nodoc
 mixin _$GlobalConfigNullable {
   bool? get isolationMode => throw _privateConstructorUsedError;
+  bool? get enableVideoRecording => throw _privateConstructorUsedError;
   bool? get enableReportSaver => throw _privateConstructorUsedError;
   String? get goldenDiffGitRepo => throw _privateConstructorUsedError;
   String? get runOnly => throw _privateConstructorUsedError;
@@ -44,6 +45,7 @@ abstract class $GlobalConfigNullableCopyWith<$Res> {
   @useResult
   $Res call(
       {bool? isolationMode,
+      bool? enableVideoRecording,
       bool? enableReportSaver,
       String? goldenDiffGitRepo,
       String? runOnly,
@@ -67,6 +69,7 @@ class _$GlobalConfigNullableCopyWithImpl<$Res,
   @override
   $Res call({
     Object? isolationMode = freezed,
+    Object? enableVideoRecording = freezed,
     Object? enableReportSaver = freezed,
     Object? goldenDiffGitRepo = freezed,
     Object? runOnly = freezed,
@@ -76,6 +79,10 @@ class _$GlobalConfigNullableCopyWithImpl<$Res,
       isolationMode: freezed == isolationMode
           ? _value.isolationMode
           : isolationMode // ignore: cast_nullable_to_non_nullable
+              as bool?,
+      enableVideoRecording: freezed == enableVideoRecording
+          ? _value.enableVideoRecording
+          : enableVideoRecording // ignore: cast_nullable_to_non_nullable
               as bool?,
       enableReportSaver: freezed == enableReportSaver
           ? _value.enableReportSaver
@@ -107,6 +114,7 @@ abstract class _$$GlobalConfigNullableImplCopyWith<$Res>
   @useResult
   $Res call(
       {bool? isolationMode,
+      bool? enableVideoRecording,
       bool? enableReportSaver,
       String? goldenDiffGitRepo,
       String? runOnly,
@@ -127,6 +135,7 @@ class __$$GlobalConfigNullableImplCopyWithImpl<$Res>
   @override
   $Res call({
     Object? isolationMode = freezed,
+    Object? enableVideoRecording = freezed,
     Object? enableReportSaver = freezed,
     Object? goldenDiffGitRepo = freezed,
     Object? runOnly = freezed,
@@ -136,6 +145,10 @@ class __$$GlobalConfigNullableImplCopyWithImpl<$Res>
       isolationMode: freezed == isolationMode
           ? _value.isolationMode
           : isolationMode // ignore: cast_nullable_to_non_nullable
+              as bool?,
+      enableVideoRecording: freezed == enableVideoRecording
+          ? _value.enableVideoRecording
+          : enableVideoRecording // ignore: cast_nullable_to_non_nullable
               as bool?,
       enableReportSaver: freezed == enableReportSaver
           ? _value.enableReportSaver
@@ -162,6 +175,7 @@ class __$$GlobalConfigNullableImplCopyWithImpl<$Res>
 class _$GlobalConfigNullableImpl implements _GlobalConfigNullable {
   _$GlobalConfigNullableImpl(
       {this.isolationMode,
+      this.enableVideoRecording,
       this.enableReportSaver,
       this.goldenDiffGitRepo,
       this.runOnly,
@@ -173,6 +187,8 @@ class _$GlobalConfigNullableImpl implements _GlobalConfigNullable {
   @override
   final bool? isolationMode;
   @override
+  final bool? enableVideoRecording;
+  @override
   final bool? enableReportSaver;
   @override
   final String? goldenDiffGitRepo;
@@ -183,7 +199,7 @@ class _$GlobalConfigNullableImpl implements _GlobalConfigNullable {
 
   @override
   String toString() {
-    return 'GlobalConfigNullable(isolationMode: $isolationMode, enableReportSaver: $enableReportSaver, goldenDiffGitRepo: $goldenDiffGitRepo, runOnly: $runOnly, reportSavePath: $reportSavePath)';
+    return 'GlobalConfigNullable(isolationMode: $isolationMode, enableVideoRecording: $enableVideoRecording, enableReportSaver: $enableReportSaver, goldenDiffGitRepo: $goldenDiffGitRepo, runOnly: $runOnly, reportSavePath: $reportSavePath)';
   }
 
   @override
@@ -193,6 +209,8 @@ class _$GlobalConfigNullableImpl implements _GlobalConfigNullable {
             other is _$GlobalConfigNullableImpl &&
             (identical(other.isolationMode, isolationMode) ||
                 other.isolationMode == isolationMode) &&
+            (identical(other.enableVideoRecording, enableVideoRecording) ||
+                other.enableVideoRecording == enableVideoRecording) &&
             (identical(other.enableReportSaver, enableReportSaver) ||
                 other.enableReportSaver == enableReportSaver) &&
             (identical(other.goldenDiffGitRepo, goldenDiffGitRepo) ||
@@ -204,8 +222,14 @@ class _$GlobalConfigNullableImpl implements _GlobalConfigNullable {
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(runtimeType, isolationMode, enableReportSaver,
-      goldenDiffGitRepo, runOnly, reportSavePath);
+  int get hashCode => Object.hash(
+      runtimeType,
+      isolationMode,
+      enableVideoRecording,
+      enableReportSaver,
+      goldenDiffGitRepo,
+      runOnly,
+      reportSavePath);
 
   /// Create a copy of GlobalConfigNullable
   /// with the given fields replaced by the non-null parameter values.
@@ -228,6 +252,7 @@ class _$GlobalConfigNullableImpl implements _GlobalConfigNullable {
 abstract class _GlobalConfigNullable implements GlobalConfigNullable {
   factory _GlobalConfigNullable(
       {final bool? isolationMode,
+      final bool? enableVideoRecording,
       final bool? enableReportSaver,
       final String? goldenDiffGitRepo,
       final String? runOnly,
@@ -238,6 +263,8 @@ abstract class _GlobalConfigNullable implements GlobalConfigNullable {
 
   @override
   bool? get isolationMode;
+  @override
+  bool? get enableVideoRecording;
   @override
   bool? get enableReportSaver;
   @override

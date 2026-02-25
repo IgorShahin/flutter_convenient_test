@@ -1573,6 +1573,11 @@ class WorkerCurrentRunConfig_IntegrationTest extends $pb.GeneratedMessage {
         const $core.bool.fromEnvironment('protobuf.omit_field_names')
             ? ''
             : 'autoUpdateGoldenFiles')
+    ..aOB(
+        5,
+        const $core.bool.fromEnvironment('protobuf.omit_field_names')
+            ? ''
+            : 'enableVideoRecording')
     ..hasRequiredFields = false;
 
   WorkerCurrentRunConfig_IntegrationTest._() : super();
@@ -1581,6 +1586,7 @@ class WorkerCurrentRunConfig_IntegrationTest extends $pb.GeneratedMessage {
     ExecutionFilter? executionFilter,
     $core.int? defaultRetryCount,
     $core.bool? autoUpdateGoldenFiles,
+    $core.bool? enableVideoRecording,
   }) {
     final _result = create();
     if (reportSuiteInfo != null) {
@@ -1594,6 +1600,9 @@ class WorkerCurrentRunConfig_IntegrationTest extends $pb.GeneratedMessage {
     }
     if (autoUpdateGoldenFiles != null) {
       _result.autoUpdateGoldenFiles = autoUpdateGoldenFiles;
+    }
+    if (enableVideoRecording != null) {
+      _result.enableVideoRecording = enableVideoRecording;
     }
     return _result;
   }
@@ -1679,6 +1688,18 @@ class WorkerCurrentRunConfig_IntegrationTest extends $pb.GeneratedMessage {
   $core.bool hasAutoUpdateGoldenFiles() => $_has(3);
   @$pb.TagNumber(4)
   void clearAutoUpdateGoldenFiles() => clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.bool get enableVideoRecording => $_getBF(4);
+  @$pb.TagNumber(5)
+  set enableVideoRecording($core.bool v) {
+    $_setBool(4, v);
+  }
+
+  @$pb.TagNumber(5)
+  $core.bool hasEnableVideoRecording() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearEnableVideoRecording() => clearField(5);
 }
 
 enum WorkerCurrentRunConfig_SubType { interactiveApp, integrationTest, notSet }

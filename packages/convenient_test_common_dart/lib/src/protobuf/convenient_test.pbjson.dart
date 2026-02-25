@@ -393,6 +393,13 @@ const WorkerCurrentRunConfig_IntegrationTest$json = const {
       '5': 8,
       '10': 'autoUpdateGoldenFiles'
     },
+    const {
+      '1': 'enable_video_recording',
+      '3': 5,
+      '4': 1,
+      '5': 8,
+      '10': 'enableVideoRecording'
+    },
   ],
 };
 

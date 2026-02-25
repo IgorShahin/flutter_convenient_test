@@ -29,6 +29,10 @@ class WorkerVideoRecordingService {
     Log.i(_kTag, 'startRecord no-op on this platform');
   }
 
+  Future<void> forceStopDanglingProcesses() async {
+    Log.i(_kTag, 'forceStopDanglingProcesses no-op on this platform');
+  }
+
   Future<void> stopAndUpload(WorkerReportSaverService reporterService) async {
     Log.i(_kTag, 'stopAndUpload no-op on this platform');
   }
@@ -227,14 +231,15 @@ class _WorkerVideoRecordingServiceMacos
 
   @override
   Future<void> cleanupBeforeStart() async {
+    await forceStopDanglingProcesses();
+  }
+
+  @override
+  Future<void> forceStopDanglingProcesses() async {
     await _killOrphanRecorderProcesses(
-      processName: 'screencapture',
-      marker: 'convenient_test_video',
-    );
+        processName: 'screencapture', marker: 'convenient_test_video');
     await _killOrphanRecorderProcesses(
-      processName: 'ffmpeg',
-      marker: 'convenient_test_video',
-    );
+        processName: 'ffmpeg', marker: 'convenient_test_video');
   }
 
   @override
@@ -293,7 +298,8 @@ class _WorkerVideoRecordingServiceMacos
       await file.delete();
     } catch (_) {}
 
-    Log.i(_kTag, 'post-process success input=${file.path} output=${output.path}');
+    Log.i(
+        _kTag, 'post-process success input=${file.path} output=${output.path}');
     return output;
   }
 
@@ -381,7 +387,8 @@ class _WorkerVideoRecordingServiceMacos
     return process;
   }
 
-  Future<Process?> _startFfmpegAvfoundation({required String targetPath}) async {
+  Future<Process?> _startFfmpegAvfoundation(
+      {required String targetPath}) async {
     final ffmpegVersion = Process.runSync('ffmpeg', ['-version']);
     if (ffmpegVersion.exitCode != 0) {
       Log.w(
@@ -518,7 +525,8 @@ class _WorkerVideoRecordingServiceMacos
       final targetPid = int.tryParse(pidText);
       if (targetPid == null || targetPid <= 0 || targetPid == pid) continue;
 
-      final ps = await Process.run('ps', ['-p', '$targetPid', '-o', 'command=']);
+      final ps =
+          await Process.run('ps', ['-p', '$targetPid', '-o', 'command=']);
       if (ps.exitCode != 0) continue;
       final command = (ps.stdout as String).trim();
       if (!command.contains(marker)) continue;

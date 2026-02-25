@@ -10,6 +10,7 @@ _$GlobalConfigNullableImpl _$$GlobalConfigNullableImplFromJson(
         Map<String, dynamic> json) =>
     _$GlobalConfigNullableImpl(
       isolationMode: json['isolationMode'] as bool?,
+      enableVideoRecording: json['enableVideoRecording'] as bool?,
       enableReportSaver: json['enableReportSaver'] as bool?,
       goldenDiffGitRepo: json['goldenDiffGitRepo'] as String?,
       runOnly: json['runOnly'] as String?,
@@ -20,6 +21,7 @@ Map<String, dynamic> _$$GlobalConfigNullableImplToJson(
         _$GlobalConfigNullableImpl instance) =>
     <String, dynamic>{
       'isolationMode': instance.isolationMode,
+      'enableVideoRecording': instance.enableVideoRecording,
       'enableReportSaver': instance.enableReportSaver,
       'goldenDiffGitRepo': instance.goldenDiffGitRepo,
       'runOnly': instance.runOnly,
@@ -46,6 +48,23 @@ mixin _$GlobalConfig on _GlobalConfig, Store {
   set isolationMode(bool value) {
     _$isolationModeAtom.reportWrite(value, super.isolationMode, () {
       super.isolationMode = value;
+    });
+  }
+
+  late final _$enableVideoRecordingAtom =
+      Atom(name: '_GlobalConfig.enableVideoRecording', context: context);
+
+  @override
+  bool get enableVideoRecording {
+    _$enableVideoRecordingAtom.reportRead();
+    return super.enableVideoRecording;
+  }
+
+  @override
+  set enableVideoRecording(bool value) {
+    _$enableVideoRecordingAtom.reportWrite(value, super.enableVideoRecording,
+        () {
+      super.enableVideoRecording = value;
     });
   }
 
@@ -117,6 +136,7 @@ mixin _$GlobalConfig on _GlobalConfig, Store {
   String toString() {
     return '''
 isolationMode: ${isolationMode},
+enableVideoRecording: ${enableVideoRecording},
 enableReportSaver: ${enableReportSaver},
 goldenDiffGitRepo: ${goldenDiffGitRepo},
 runOnly: ${runOnly},

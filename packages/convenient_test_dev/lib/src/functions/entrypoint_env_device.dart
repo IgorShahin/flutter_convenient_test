@@ -176,8 +176,10 @@ Future<void> _lastTearDownAll() async {
 }
 
 Future<void> _firstSetUpAll() async {
+  const kTag = 'EntryPointEnvDevice';
   final reporterService = WorkerReportSaverService.I;
   if (reporterService == null) return;
+  final videoRecorderService = myGetIt.get<WorkerVideoRecordingService>();
 
   final allowExecuteTestNames = myGetIt
       .get<ConvenientTestExecutor>()
@@ -185,7 +187,7 @@ Future<void> _firstSetUpAll() async {
       .allowExecuteTestNames;
   if (allowExecuteTestNames.isEmpty) {
     Log.i(
-      'EntryPointEnvDevice',
+      kTag,
       'skip video recording in setUpAll because no tests will run '
       '(resolvedExecutionFilter is empty)',
     );
@@ -193,6 +195,34 @@ Future<void> _firstSetUpAll() async {
     return;
   }
 
-  await myGetIt.get<WorkerVideoRecordingService>().startRecord();
+  final enableVideoRecording = () async {
+    try {
+      final currentRunConfig = await myGetIt
+          .get<ConvenientTestManagerRpcService>()
+          .getWorkerCurrentRunConfig();
+      if (currentRunConfig.whichSubType() !=
+          WorkerCurrentRunConfig_SubType.integrationTest) {
+        return true;
+      }
+      return currentRunConfig.integrationTest.enableVideoRecording;
+    } catch (e, s) {
+      Log.w(
+        kTag,
+        'cannot resolve enableVideoRecording from manager '
+        'fallback=true e=$e s=$s',
+      );
+      return true;
+    }
+  }();
+
+  if (await enableVideoRecording) {
+    await videoRecorderService.startRecord();
+  } else {
+    Log.i(
+      kTag,
+      'skip video recording in setUpAll because enableVideoRecording=false',
+    );
+    await videoRecorderService.forceStopDanglingProcesses();
+  }
   await reporterService.report(ReportItem(setUpAll: SetUpAll()));
 }

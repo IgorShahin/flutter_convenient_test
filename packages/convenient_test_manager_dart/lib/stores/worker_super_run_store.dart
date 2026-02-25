@@ -26,6 +26,12 @@ abstract class _WorkerSuperRunStore with Store {
 
   set isolationMode(bool val) => GlobalConfigStore.config.isolationMode = val;
 
+  bool get enableVideoRecording =>
+      GlobalConfigStore.config.enableVideoRecording;
+
+  set enableVideoRecording(bool val) =>
+      GlobalConfigStore.config.enableVideoRecording = val;
+
   @observable
   var flakyTestTotalAttemptCount = 2;
 
@@ -69,6 +75,9 @@ abstract class _WorkerSuperRunStore with Store {
     if (config.hasIntegrationTest()) {
       if (config.integrationTest.autoUpdateGoldenFiles !=
           autoUpdateGoldenFiles) {
+        throw AssertionError;
+      }
+      if (config.integrationTest.enableVideoRecording != enableVideoRecording) {
         throw AssertionError;
       }
     }
@@ -132,6 +141,8 @@ class _WorkerSuperRunControllerHalt extends WorkerSuperRunController {
           ),
           autoUpdateGoldenFiles:
               GetIt.I.get<WorkerSuperRunStore>().autoUpdateGoldenFiles,
+          enableVideoRecording:
+              GetIt.I.get<WorkerSuperRunStore>().enableVideoRecording,
         ),
       );
 
@@ -197,6 +208,8 @@ abstract class __WorkerSuperRunControllerIntegrationTestClassicalMode
         ),
         autoUpdateGoldenFiles:
             GetIt.I.get<WorkerSuperRunStore>().autoUpdateGoldenFiles,
+        enableVideoRecording:
+            GetIt.I.get<WorkerSuperRunStore>().enableVideoRecording,
       ),
     );
   }
@@ -245,6 +258,8 @@ abstract class __WorkerSuperRunControllerIntegrationTestIsolationMode
         executionFilter: _calcExecutionFilter(),
         autoUpdateGoldenFiles:
             GetIt.I.get<WorkerSuperRunStore>().autoUpdateGoldenFiles,
+        enableVideoRecording:
+            GetIt.I.get<WorkerSuperRunStore>().enableVideoRecording,
       ),
     );
   }
