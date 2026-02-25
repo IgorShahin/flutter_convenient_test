@@ -32,6 +32,11 @@ class ManagerReportSaverService {
     await GetIt.I.get<ManagerAllureReportService>().clear();
   }
 
+  Future<void> clearCurrentSuperRunDataDirectory() async {
+    Log.i(_kTag, 'clearCurrentSuperRunDataDirectory');
+    await GetIt.I.get<FsService>().clearActiveSuperRunDataDirectory();
+  }
+
   static Future<String> _getReportPath() async {
     return
         // ignore: prefer_interpolation_to_compose_strings

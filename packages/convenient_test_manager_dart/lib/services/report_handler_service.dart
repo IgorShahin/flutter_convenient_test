@@ -73,6 +73,18 @@ class ReportHandlerService {
     Log.d(_kTag, 'TearDownAll $request');
     if (!offlineFile) {
       Log.i(_kTag, 'TearDownAll skip local manager stop (worker-owned video)');
+
+      final executedNames =
+          request.resolvedExecutionFilter.allowExecuteTestNames;
+      if (executedNames.isEmpty) {
+        Log.i(
+          _kTag,
+          'TearDownAll detected empty/service run; remove current RUN directory',
+        );
+        await GetIt.I
+            .get<ManagerReportSaverService>()
+            .clearCurrentSuperRunDataDirectory();
+      }
     }
 
     GetIt.I
@@ -216,7 +228,8 @@ class ReportHandlerService {
       return true;
     }
 
-    final chunkStartTimeUtc = DateTime.fromMillisecondsSinceEpoch(startMs).toUtc();
+    final chunkStartTimeUtc =
+        DateTime.fromMillisecondsSinceEpoch(startMs).toUtc();
     final chunkEndTimeUtc = DateTime.fromMillisecondsSinceEpoch(endMs).toUtc();
     if (!offlineFile) {
       final suiteInfoAt = _currentRunSuiteInfoReceivedAt;
@@ -290,7 +303,8 @@ class ReportHandlerService {
     }
     state.nextChunkIndex = chunkIndex + 1;
 
-    if (state.totalChunks != null && state.nextChunkIndex > state.totalChunks!) {
+    if (state.totalChunks != null &&
+        state.nextChunkIndex > state.totalChunks!) {
       Log.w(
         _kTag,
         'worker video chunk exceeds totalChunks sessionId=$sessionId '

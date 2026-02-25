@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -72,17 +73,9 @@ class ManagerAllureReportService {
 
     await _persistHistoryFromReportDir();
 
-    final indexPath = '$reportDirPath/index.html';
-    final openPr = await _openPath(indexPath);
-    if (openPr.exitCode != 0) {
-      Log.e(
-        _kTag,
-        'open allure report failed exitCode=${openPr.exitCode} '
-        'stdout=${openPr.stdout} stderr=${openPr.stderr}',
-      );
-      return;
-    }
-    Log.i(_kTag, 'allure report opened path=$indexPath');
+    final started = await _startAllureOpen(reportDirPath);
+    if (!started) return;
+    Log.i(_kTag, 'allure report opened via local server dir=$reportDirPath');
   }
 
   Future<void> _handleItem(ReportItem item) async {
@@ -483,14 +476,36 @@ class ManagerAllureReportService {
     _uuidCounter = 0;
   }
 
-  Future<ProcessResult> _openPath(String path) {
-    if (Platform.isMacOS) {
-      return Process.run('open', [path], runInShell: true);
+  Future<bool> _startAllureOpen(String reportDirPath) async {
+    try {
+      final process = await Process.start(
+        'allure',
+        ['open', reportDirPath],
+        runInShell: true,
+      );
+
+      int? exitedQuickly;
+      try {
+        exitedQuickly =
+            await process.exitCode.timeout(const Duration(milliseconds: 1200));
+      } on TimeoutException {
+        exitedQuickly = null;
+      }
+      if (exitedQuickly != null && exitedQuickly != 0) {
+        final stdout = await utf8.decodeStream(process.stdout);
+        final stderr = await utf8.decodeStream(process.stderr);
+        Log.e(
+          _kTag,
+          'allure open failed quickly exitCode=$exitedQuickly '
+          'stdout=$stdout stderr=$stderr',
+        );
+        return false;
+      }
+      return true;
+    } catch (e, s) {
+      Log.e(_kTag, 'allure open failed e=$e s=$s');
+      return false;
     }
-    if (Platform.isWindows) {
-      return Process.run('cmd', ['/c', 'start', '', path], runInShell: true);
-    }
-    return Process.run('xdg-open', [path], runInShell: true);
   }
 
   final _random = Random();
