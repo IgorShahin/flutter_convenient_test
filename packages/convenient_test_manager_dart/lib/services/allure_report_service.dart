@@ -57,11 +57,21 @@ class ManagerAllureReportService {
 
     await _hydrateHistoryIntoResults();
 
-    final pr = await Process.run(
-      'allure',
-      ['generate', resultsDirPath, '-o', reportDirPath, '--clean'],
-      runInShell: true,
-    );
+    ProcessResult pr;
+    try {
+      pr = await Process.run(
+        'allure',
+        ['generate', resultsDirPath, '-o', reportDirPath, '--clean'],
+        runInShell: true,
+      ).timeout(const Duration(minutes: 2));
+    } on TimeoutException {
+      Log.e(
+        _kTag,
+        'allure generate timeout (>2m). '
+        'resultsDirPath=$resultsDirPath reportDirPath=$reportDirPath',
+      );
+      return;
+    }
     if (pr.exitCode != 0) {
       Log.e(
         _kTag,
@@ -73,7 +83,7 @@ class ManagerAllureReportService {
 
     await _persistHistoryFromReportDir();
 
-    final started = await _startAllureOpen(reportDirPath);
+    final started = await _startAllureOpenDetached(reportDirPath);
     if (!started) return;
     Log.i(_kTag, 'allure report opened via local server dir=$reportDirPath');
   }
@@ -107,46 +117,36 @@ class ManagerAllureReportService {
   }
 
   void _handleLogEntry(LogEntry request) {
-    final runtime = _ensureTestRuntime(request.testName);
     final logEntryId = request.id.toInt();
     _testNameByLogEntryId[logEntryId] = request.testName;
+    if (_isSetUpAllServiceTestName(request.testName)) {
+      for (final sub in request.subEntries) {
+        final subMs = _usToMs(sub.time.toInt());
+        final step = _buildStep(sub, subMs);
+        _deferredSetUpAllSteps.add(step);
+        _deferredSetUpAllLogBuffer.writeln(_formatRawLogLine(sub, subMs));
+      }
+      _drainPendingSnapshots(logEntryId, request.testName);
+      return;
+    }
+    if (_isServiceTestName(request.testName)) return;
+
+    final runtime = _ensureTestRuntime(request.testName);
 
     for (final sub in request.subEntries) {
       final subMs = _usToMs(sub.time.toInt());
       runtime.touchAt(subMs);
 
-      final status = _statusForLogSubEntry(sub);
-      final stepName = _formatStepName(sub);
-      final step = <String, dynamic>{
-        'name': stepName,
-        'status': status,
-        'stage': 'finished',
-        'start': subMs,
-        'stop': subMs,
-      };
-      if (sub.error.isNotEmpty || sub.stackTrace.isNotEmpty) {
-        step['statusDetails'] = {
-          'message': sub.error,
-          'trace': sub.stackTrace,
-        };
-      }
-      runtime.steps.add(step);
-      runtime.logBuffer.writeln(
-        '[${DateTime.fromMillisecondsSinceEpoch(subMs).toUtc().toIso8601String()}] '
-        '[${sub.type.name}] $stepName'
-        '${sub.error.isEmpty ? '' : '\nERROR: ${sub.error}'}'
-        '${sub.stackTrace.isEmpty ? '' : '\nSTACK: ${sub.stackTrace}'}',
-      );
+      runtime.steps.add(_buildStep(sub, subMs));
+      runtime.logBuffer.writeln(_formatRawLogLine(sub, subMs));
     }
 
-    final pendingSnapshots = _pendingSnapshotsByLogEntryId.remove(logEntryId);
-    if (pendingSnapshots == null) return;
-    for (final pending in pendingSnapshots) {
-      _attachSnapshotToRuntime(runtime, pending.name, pending.image);
-    }
+    _drainPendingSnapshots(logEntryId, request.testName);
   }
 
   Future<void> _handleRunnerStateChange(RunnerStateChange request) async {
+    if (_isServiceTestName(request.testName)) return;
+
     final runtime = _ensureTestRuntime(request.testName);
 
     final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
@@ -159,6 +159,15 @@ class ManagerAllureReportService {
   }
 
   void _handleRunnerError(RunnerError request) {
+    if (_isSetUpAllServiceTestName(request.testName)) {
+      _deferredSetUpAllLogBuffer.writeln('RUNNER ERROR: ${request.error}');
+      if (request.stackTrace.isNotEmpty) {
+        _deferredSetUpAllLogBuffer.writeln(request.stackTrace);
+      }
+      return;
+    }
+    if (_isServiceTestName(request.testName)) return;
+
     final runtime = _ensureTestRuntime(request.testName);
     final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
     runtime.touchAt(nowMs);
@@ -174,6 +183,12 @@ class ManagerAllureReportService {
   }
 
   void _handleRunnerMessage(RunnerMessage request) {
+    if (_isSetUpAllServiceTestName(request.testName)) {
+      _deferredSetUpAllLogBuffer.writeln('RUNNER MESSAGE: ${request.message}');
+      return;
+    }
+    if (_isServiceTestName(request.testName)) return;
+
     final runtime = _ensureTestRuntime(request.testName);
     final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
     runtime.touchAt(nowMs);
@@ -191,6 +206,13 @@ class ManagerAllureReportService {
       );
       return;
     }
+    if (_isSetUpAllServiceTestName(testName)) {
+      _deferredSetUpAllAttachments.add(
+        _PendingSnapshot(name: request.name, image: request.image as Uint8List),
+      );
+      return;
+    }
+    if (_isServiceTestName(testName)) return;
 
     final runtime = _ensureTestRuntime(testName);
     _attachSnapshotToRuntime(runtime, request.name, request.image as Uint8List);
@@ -295,7 +317,7 @@ class ManagerAllureReportService {
   }
 
   _AllureTestRuntime _ensureTestRuntime(String testName) {
-    return _tests.putIfAbsent(
+    final runtime = _tests.putIfAbsent(
       testName,
       () => _AllureTestRuntime(
         uuid: _nextUuid(),
@@ -303,6 +325,80 @@ class ManagerAllureReportService {
         fullName: testName,
       ),
     );
+    _injectDeferredSetUpAllDataIfNeeded(runtime);
+    return runtime;
+  }
+
+  bool _isServiceTestName(String? testName) {
+    if (testName == null) return true;
+    final normalized = testName.trim();
+    return normalized.isEmpty ||
+        normalized == '(setUpAll)' ||
+        normalized == '(tearDownAll)';
+  }
+
+  bool _isSetUpAllServiceTestName(String? testName) =>
+      testName?.trim() == '(setUpAll)';
+
+  Map<String, dynamic> _buildStep(LogSubEntry sub, int subMs) {
+    final step = <String, dynamic>{
+      'name': _formatStepName(sub),
+      'status': _statusForLogSubEntry(sub),
+      'stage': 'finished',
+      'start': subMs,
+      'stop': subMs,
+    };
+    if (sub.error.isNotEmpty || sub.stackTrace.isNotEmpty) {
+      step['statusDetails'] = {
+        'message': sub.error,
+        'trace': sub.stackTrace,
+      };
+    }
+    return step;
+  }
+
+  String _formatRawLogLine(LogSubEntry sub, int subMs) {
+    final stepName = _formatStepName(sub);
+    return '[${DateTime.fromMillisecondsSinceEpoch(subMs).toUtc().toIso8601String()}] '
+        '[${sub.type.name}] $stepName'
+        '${sub.error.isEmpty ? '' : '\nERROR: ${sub.error}'}'
+        '${sub.stackTrace.isEmpty ? '' : '\nSTACK: ${sub.stackTrace}'}';
+  }
+
+  void _drainPendingSnapshots(int logEntryId, String testName) {
+    final pendingSnapshots = _pendingSnapshotsByLogEntryId.remove(logEntryId);
+    if (pendingSnapshots == null) return;
+
+    if (_isSetUpAllServiceTestName(testName)) {
+      _deferredSetUpAllAttachments.addAll(pendingSnapshots);
+      return;
+    }
+    if (_isServiceTestName(testName)) return;
+
+    final runtime = _ensureTestRuntime(testName);
+    for (final pending in pendingSnapshots) {
+      _attachSnapshotToRuntime(runtime, pending.name, pending.image);
+    }
+  }
+
+  void _injectDeferredSetUpAllDataIfNeeded(_AllureTestRuntime runtime) {
+    if (_deferredSetUpAllInjected) return;
+    final hasDeferredData = _deferredSetUpAllSteps.isNotEmpty ||
+        _deferredSetUpAllAttachments.isNotEmpty ||
+        _deferredSetUpAllLogBuffer.isNotEmpty;
+    if (!hasDeferredData) return;
+
+    runtime.steps.insertAll(0, _deferredSetUpAllSteps);
+    if (_deferredSetUpAllLogBuffer.isNotEmpty) {
+      runtime.logBuffer.writeln('--- setUpAll ---');
+      runtime.logBuffer.write(_deferredSetUpAllLogBuffer.toString());
+      runtime.logBuffer.writeln('--- /setUpAll ---');
+    }
+    for (final attachment in _deferredSetUpAllAttachments) {
+      _attachSnapshotToRuntime(
+          runtime, 'setUpAll:${attachment.name}', attachment.image);
+    }
+    _deferredSetUpAllInjected = true;
   }
 
   String _formatStepName(LogSubEntry sub) {
@@ -471,36 +567,24 @@ class ManagerAllureReportService {
     _tests.clear();
     _testNameByLogEntryId.clear();
     _pendingSnapshotsByLogEntryId.clear();
+    _deferredSetUpAllSteps.clear();
+    _deferredSetUpAllAttachments.clear();
+    _deferredSetUpAllLogBuffer = StringBuffer();
+    _deferredSetUpAllInjected = false;
     _suiteInfo = null;
     _artifactCounter = 0;
     _uuidCounter = 0;
   }
 
-  Future<bool> _startAllureOpen(String reportDirPath) async {
+  Future<bool> _startAllureOpenDetached(String reportDirPath) async {
     try {
       final process = await Process.start(
         'allure',
         ['open', reportDirPath],
         runInShell: true,
+        mode: ProcessStartMode.detached,
       );
-
-      int? exitedQuickly;
-      try {
-        exitedQuickly =
-            await process.exitCode.timeout(const Duration(milliseconds: 1200));
-      } on TimeoutException {
-        exitedQuickly = null;
-      }
-      if (exitedQuickly != null && exitedQuickly != 0) {
-        final stdout = await utf8.decodeStream(process.stdout);
-        final stderr = await utf8.decodeStream(process.stderr);
-        Log.e(
-          _kTag,
-          'allure open failed quickly exitCode=$exitedQuickly '
-          'stdout=$stdout stderr=$stderr',
-        );
-        return false;
-      }
+      Log.i(_kTag, 'allure open detached pid=${process.pid}');
       return true;
     } catch (e, s) {
       Log.e(_kTag, 'allure open failed e=$e s=$s');
@@ -512,6 +596,10 @@ class ManagerAllureReportService {
   final _tests = <String, _AllureTestRuntime>{};
   final _testNameByLogEntryId = <int, String>{};
   final _pendingSnapshotsByLogEntryId = <int, List<_PendingSnapshot>>{};
+  final _deferredSetUpAllSteps = <Map<String, dynamic>>[];
+  final _deferredSetUpAllAttachments = <_PendingSnapshot>[];
+  StringBuffer _deferredSetUpAllLogBuffer = StringBuffer();
+  bool _deferredSetUpAllInjected = false;
   SuiteInfo? _suiteInfo;
   String? _resultsDirPath;
   String? _reportDirPath;

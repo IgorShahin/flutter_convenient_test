@@ -1,0 +1,84 @@
+stages:
+  - e2e
+
+# Windows desktop E2E on self-hosted runner.
+# Runner requirements:
+# 1) tag: windows-e2e
+# 2) interactive desktop session (not headless service session)
+# 3) Flutter + VS Build Tools installed
+# 4) optional: Allure CLI installed and available in PATH
+#
+# Recommended CI/CD variables (GitLab -> Settings -> CI/CD -> Variables):
+# - CT_PROJECT_DIR: absolute path to tested app project on runner
+#   example: C:\\work\\wb-point-desktop-tests
+# - CT_TEST_CMD: test command to execute
+#   example: flutter test integration_test
+# - CONVENIENT_TEST_REPORT_SAVE_PATH: where convenient_test stores RUN-* folders
+#   example: C:\\ct-reports
+
+variables:
+  CT_PROJECT_DIR: "C:\\work\\app-under-test"
+  CT_TEST_CMD: "flutter test integration_test"
+  CONVENIENT_TEST_REPORT_SAVE_PATH: "C:\\ct-reports"
+
+e2e_windows_desktop:
+  stage: e2e
+  tags:
+    - windows-e2e
+  interruptible: true
+  timeout: 2h
+  before_script:
+    - '$ErrorActionPreference = "Stop"'
+    - 'Write-Host "Runner: $env:COMPUTERNAME"'
+    - 'Write-Host "Project: $env:CT_PROJECT_DIR"'
+    - 'Write-Host "Reports: $env:CONVENIENT_TEST_REPORT_SAVE_PATH"'
+    - 'if (-not (Test-Path $env:CT_PROJECT_DIR)) { throw "CT_PROJECT_DIR not found: $env:CT_PROJECT_DIR" }'
+    - 'if (-not (Test-Path $env:CONVENIENT_TEST_REPORT_SAVE_PATH)) { New-Item -ItemType Directory -Path $env:CONVENIENT_TEST_REPORT_SAVE_PATH -Force | Out-Null }'
+
+  script:
+    - 'Set-Location $env:CT_PROJECT_DIR'
+    - 'flutter --version'
+    - 'flutter pub get'
+    - 'Write-Host "Running: $env:CT_TEST_CMD"'
+    - 'cmd /c $env:CT_TEST_CMD'
+
+    # Locate latest RUN-* and export paths for artifacts stage
+    - |
+      $latestRun = Get-ChildItem -Path $env:CONVENIENT_TEST_REPORT_SAVE_PATH -Directory -Filter "RUN-*" |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+      if ($null -eq $latestRun) {
+        throw "No RUN-* directory found in $env:CONVENIENT_TEST_REPORT_SAVE_PATH"
+      }
+      Write-Host "Latest RUN: $($latestRun.FullName)"
+      "LATEST_RUN_DIR=$($latestRun.FullName)" | Out-File -FilePath run_paths.env -Encoding ascii -Append
+      "ALLURE_RESULTS_DIR=$($latestRun.FullName)\\AllureResults" | Out-File -FilePath run_paths.env -Encoding ascii -Append
+      "ALLURE_REPORT_DIR=$($latestRun.FullName)\\AllureReport" | Out-File -FilePath run_paths.env -Encoding ascii -Append
+
+    # Generate Allure report if allure CLI is installed
+    - |
+      if (Get-Command allure -ErrorAction SilentlyContinue) {
+        $resultsDir = (Get-Content run_paths.env | Select-String '^ALLURE_RESULTS_DIR=').ToString().Split('=')[1]
+        $reportDir = (Get-Content run_paths.env | Select-String '^ALLURE_REPORT_DIR=').ToString().Split('=')[1]
+        if (Test-Path $resultsDir) {
+          allure generate "$resultsDir" -o "$reportDir" --clean
+        } else {
+          Write-Warning "Allure results directory not found: $resultsDir"
+        }
+      } else {
+        Write-Warning "Allure CLI is not installed. Skipping allure generate."
+      }
+
+  artifacts:
+    when: always
+    expire_in: 7 days
+    reports:
+      dotenv: run_paths.env
+    paths:
+      - run_paths.env
+      - C:/ct-reports/
+
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
