@@ -1,11 +1,18 @@
+import 'dart:typed_data';
+
+import 'package:collection/collection.dart';
+import 'package:convenient_test_common/convenient_test_common.dart';
 import 'package:convenient_test_manager/stores/highlight_store.dart';
 import 'package:convenient_test_manager/stores/home_page_store.dart';
 import 'package:convenient_test_manager/stores/video_player_store.dart';
+import 'package:convenient_test_manager_dart/misc/runtime_platform.dart';
 import 'package:convenient_test_manager_dart/services/misc_dart_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:get_it/get_it.dart';
 
 class MiscFlutterService extends MiscDartService {
+  static const _kTag = 'MiscFlutterService';
+
   @override
   void reloadInfo() {
     GetIt.I.get<HighlightStore>().enableAutoExpand = true;
@@ -21,18 +28,71 @@ class MiscFlutterService extends MiscDartService {
 
   Future<void> pickFileAndReadReport(
       {String? pathOverride, bool readSync = false, bool clear = true}) async {
-    String path;
+    const effectiveClear = false;
+    String? path;
+    Uint8List? bytes;
     if (pathOverride == null) {
-      final result = await FilePicker.platform.pickFiles(allowMultiple: false);
+      final result = await FilePicker.platform
+          .pickFiles(allowMultiple: false, withData: true, withReadStream: true);
       if (result == null) return;
 
-      path = result.paths.single!;
+      final file = result.files.single;
+      if (supportsIoPlatform) {
+        path = file.path;
+      } else {
+        path = null;
+      }
+      bytes = file.bytes;
+      Log.i(
+        _kTag,
+        'pickFileAndReadReport selected '
+        'name=${file.name} size=${file.size} path=$path '
+        'hasBytes=${bytes != null} hasReadStream=${file.readStream != null}',
+      );
+
+      if (bytes == null && file.readStream != null) {
+        bytes = await _collectBytes(file.readStream!);
+        Log.i(
+          _kTag,
+          'pickFileAndReadReport collected bytes from stream size=${bytes.length}',
+        );
+      }
     } else {
       path = pathOverride;
+      Log.i(_kTag, 'pickFileAndReadReport pathOverride=$path');
     }
 
-    GetIt.I.get<HomePageStore>().displayLoadedReportMode = true;
+    try {
+      if (path != null && supportsIoPlatform) {
+        Log.i(_kTag, 'pickFileAndReadReport load from file path');
+        await readReportFromFile(
+          path,
+          sync: readSync,
+          doClear: effectiveClear,
+        );
+      } else if (bytes != null) {
+        Log.i(_kTag, 'pickFileAndReadReport load from in-memory bytes');
+        await readReportFromBytes(bytes, doClear: effectiveClear);
+      } else {
+        throw Exception(
+          'Cannot read report file: no filesystem path and no in-memory bytes from file picker',
+        );
+      }
 
-    await readReportFromFile(path, sync: readSync, doClear: clear);
+      GetIt.I.get<HomePageStore>().displayLoadedReportMode = true;
+      Log.i(_kTag, 'pickFileAndReadReport success');
+    } catch (e, s) {
+      GetIt.I.get<HomePageStore>().displayLoadedReportMode = false;
+      Log.e(_kTag, 'pickFileAndReadReport failed e=$e s=$s');
+      rethrow;
+    }
+  }
+
+  Future<Uint8List> _collectBytes(Stream<List<int>> stream) async {
+    final chunks = <int>[];
+    await for (final chunk in stream) {
+      chunks.addAll(chunk);
+    }
+    return Uint8List.fromList(chunks);
   }
 }

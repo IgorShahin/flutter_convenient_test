@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:convenient_test_common_dart/convenient_test_common_dart.dart';
 import 'package:convenient_test_manager_dart/services/report_handler_service.dart';
@@ -53,20 +54,40 @@ class MiscDartService {
       {bool sync = false, bool doClear = true}) async {
     Log.d(_kTag, 'readReportFromFile start path=$path');
 
-    clearAll();
-    final file =
+    final fileBytes =
         sync ? File(path).readAsBytesSync() : await File(path).readAsBytes();
-    final reader = CodedBufferReader(file,
+    await readReportFromBytes(fileBytes, doClear: doClear);
+  }
+
+  Future<void> readReportFromBytes(
+    Uint8List fileBytes, {
+    bool doClear = true,
+  }) async {
+    Log.d(_kTag, 'readReportFromBytes start size=${fileBytes.length}');
+
+    clearAll();
+    final reader = CodedBufferReader(fileBytes,
         sizeLimit: 1073741824); // allow for up to 1 Gigabyte
 
     final reportCollection = ReportCollection.create();
     reportCollection.mergeFromCodedBufferReader(reader);
+    Log.i(
+      _kTag,
+      'readReportFromBytes parsed items=${reportCollection.items.length}',
+    );
+    if (reportCollection.items.isEmpty) {
+      Log.w(
+        _kTag,
+        'readReportFromBytes parsed zero items. '
+        'Likely selected file is not a convenient_test report protobuf',
+      );
+    }
 
-    Log.d(_kTag, 'readReportFromFile read reportCollection');
+    Log.d(_kTag, 'readReportFromBytes handle reportCollection');
     await GetIt.I
         .get<ReportHandlerService>()
         .handle(reportCollection, offlineFile: true, doClear: doClear);
 
-    Log.d(_kTag, 'readReportFromFile end');
+    Log.d(_kTag, 'readReportFromBytes end');
   }
 }

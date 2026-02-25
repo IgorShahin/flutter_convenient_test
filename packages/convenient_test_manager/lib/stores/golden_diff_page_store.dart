@@ -3,8 +3,8 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:convenient_test_common/convenient_test_common.dart';
-import 'package:convenient_test_dev/convenient_test_dev.dart';
 import 'package:convenient_test_manager/misc/git_extensions.dart';
+import 'package:convenient_test_manager/misc/golden_compare/golden_compare.dart';
 import 'package:convenient_test_manager_dart/stores/global_config_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -56,8 +56,8 @@ abstract class _GoldenDiffPageStore with Store {
       final originalContent =
           Uint8List.fromList(await git.show(ref: 'HEAD', filePath: path));
       final newContent = await File(p.join(gitRepo, path)).readAsBytes();
-      final comparisonResult = await EnhancedLocalFileComparator.myCompareLists(
-          originalContent, newContent);
+      final comparisonResult =
+          await compareGoldenBytes(originalContent, newContent);
 
       return GitDiffFileInfo(
         path: path,

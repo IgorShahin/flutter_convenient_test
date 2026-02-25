@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:args/args.dart';
 import 'package:convenient_test_common_dart/convenient_test_common_dart.dart';
+import 'package:convenient_test_manager_dart/misc/runtime_platform.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:mobx/mobx.dart';
 
@@ -81,7 +82,7 @@ sealed class GlobalConfigNullable with _$GlobalConfigNullable {
   // ignore: prefer_constructors_over_static_methods
   static Future<GlobalConfigNullable> parseConfigFile() async {
     try {
-      final homeDirectory = Platform.environment['HOME'];
+      final homeDirectory = environmentValue('HOME');
       Log.d(_kTag, 'parseConfigFile homeDirectory=$homeDirectory');
       if (homeDirectory == null) return GlobalConfigNullable();
 

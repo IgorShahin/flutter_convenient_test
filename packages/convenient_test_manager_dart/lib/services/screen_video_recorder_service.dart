@@ -2,9 +2,16 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:convenient_test_common_dart/convenient_test_common_dart.dart';
+import 'package:convenient_test_manager_dart/misc/runtime_platform.dart';
 
 abstract class ScreenVideoRecorderService {
   static ScreenVideoRecorderService create() {
+    if (!supportsIoPlatform) {
+      return _ScreenVideoRecorderServiceIsolateExceptionDecorator(
+        _ScreenVideoRecorderServiceNoOp(),
+      );
+    }
+
     final inner = _ScreenVideoRecorderServiceIosSimulator.maybeCreate() ??
         _ScreenVideoRecorderServiceMacosDesktop.maybeCreate() ??
         _ScreenVideoRecorderServiceWindowsDesktop.maybeCreate() ??
@@ -190,7 +197,7 @@ class _ScreenVideoRecorderServiceMacosDesktop
     if (byTitle != null) return byTitle;
     final byWorkerPid = _resolveCaptureRectByWorkerVmServicePid();
     if (byWorkerPid != null) return byWorkerPid;
-    return _resolveFrontmostWindowCaptureRect();
+    return null;
   }
 
   _CaptureRect? _resolveCaptureRectByTitle() {
@@ -234,26 +241,6 @@ end run
           _kTag, 'resolveCaptureRectByTitle no window matched title="$title"');
     }
     return rect;
-  }
-
-  _CaptureRect? _resolveFrontmostWindowCaptureRect() {
-    const script = '''
-tell application "System Events"
-  set p to first application process whose frontmost is true
-  set w to front window of p
-  set {xPos, yPos} to position of w
-  set {wSize, hSize} to size of w
-  return (xPos as text) & "," & (yPos as text) & "," & (wSize as text) & "," & (hSize as text)
-end tell
-''';
-
-    final result = Process.runSync('osascript', ['-e', script]);
-    if (result.exitCode != 0) {
-      Log.w(_kTag,
-          'resolveFrontmostWindowCaptureRect failed exitCode=${result.exitCode} stderr=${result.stderr}');
-      return null;
-    }
-    return _CaptureRect.tryParse((result.stdout as String).trim());
   }
 
   _CaptureRect? _resolveCaptureRectByWorkerVmServicePid() {

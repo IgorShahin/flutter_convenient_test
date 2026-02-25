@@ -23,8 +23,18 @@ class HomePage extends StatelessWidget {
   }
 }
 
-class _Body extends StatelessWidget {
+class _Body extends StatefulWidget {
   const _Body();
+
+  @override
+  State<_Body> createState() => _BodyState();
+}
+
+class _BodyState extends State<_Body> {
+  static const _kSplitterWidth = 10.0;
+  static const _kDefaultLeftPanelFraction = 0.5;
+  static const _kMinPanelWidth = 220.0;
+  double _leftPanelFraction = _kDefaultLeftPanelFraction;
 
   @override
   Widget build(BuildContext context) {
@@ -96,22 +106,48 @@ class _Body extends StatelessWidget {
 
     return Stack(
       children: [
-        Row(
-          children: [
-            const Expanded(
-              flex: 1,
-              child: HomePageCommandInfoPanel(),
-            ),
-            if (homePageStore.expandSecondaryPanel) ...[
-              Container(width: 8),
-              Container(width: 1, color: Theme.of(context).colorScheme.outline),
-              const Expanded(
-                flex: 1,
-                child: HomePageSecondaryPanel(),
+        LayoutBuilder(builder: (context, constraints) {
+          if (!homePageStore.expandSecondaryPanel) {
+            return const Row(
+              children: [
+                Expanded(child: HomePageCommandInfoPanel()),
+              ],
+            );
+          }
+
+          final totalWidth = constraints.maxWidth;
+          final available =
+              (totalWidth - _kSplitterWidth).clamp(1.0, 1000000.0);
+          final minFraction = (_kMinPanelWidth / available).clamp(0.15, 0.45);
+          final maxFraction = 1 - minFraction;
+          final clampedFraction = _leftPanelFraction.clamp(
+            minFraction,
+            maxFraction,
+          );
+          _leftPanelFraction = clampedFraction;
+
+          final leftWidth = available * clampedFraction;
+          final rightWidth = available - leftWidth;
+
+          return Row(
+            children: [
+              SizedBox(
+                width: leftWidth,
+                child: const HomePageCommandInfoPanel(),
+              ),
+              _buildSplitter(
+                context: context,
+                totalWidth: totalWidth,
+                minFraction: minFraction,
+                maxFraction: maxFraction,
+              ),
+              SizedBox(
+                width: rightWidth,
+                child: const HomePageSecondaryPanel(),
               ),
             ],
-          ],
-        ),
+          );
+        }),
         if (!homePageStore.expandSecondaryPanel)
           Positioned(
             right: 4,
@@ -128,6 +164,40 @@ class _Body extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildSplitter({
+    required BuildContext context,
+    required double totalWidth,
+    required double minFraction,
+    required double maxFraction,
+  }) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeColumn,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onDoubleTap: () {
+          setState(() => _leftPanelFraction = _kDefaultLeftPanelFraction);
+        },
+        onHorizontalDragUpdate: (details) {
+          if (totalWidth <= 0) return;
+          final next =
+              _leftPanelFraction + details.delta.dx / totalWidth;
+          setState(() {
+            _leftPanelFraction = next.clamp(minFraction, maxFraction);
+          });
+        },
+        child: SizedBox(
+          width: _kSplitterWidth,
+          child: Center(
+            child: Container(
+              width: 1,
+              color: Theme.of(context).colorScheme.outline,
+            ),
+          ),
+        ),
+      ),
     );
   }
 

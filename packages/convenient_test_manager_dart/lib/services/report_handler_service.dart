@@ -53,7 +53,7 @@ class ReportHandlerService {
       case ReportItem_SubType.runnerMessage:
         return _handleRunnerMessage(item.runnerMessage);
       case ReportItem_SubType.snapshot:
-        return _handleSnapshot(item.snapshot);
+        return _handleSnapshot(item.snapshot, offlineFile: offlineFile);
       case ReportItem_SubType.notSet:
         throw Exception('unknown $item');
     }
@@ -135,8 +135,14 @@ class ReportHandlerService {
     _suiteInfoStore.testEntryStateMap[testEntryId] = request.state;
   }
 
-  Future<void> _handleSnapshot(Snapshot request) async {
-    if (await _handleWorkerVideoChunkSnapshot(request)) return;
+  Future<void> _handleSnapshot(
+    Snapshot request, {
+    required bool offlineFile,
+  }) async {
+    if (await _handleWorkerVideoChunkSnapshot(request,
+        offlineFile: offlineFile)) {
+      return;
+    }
 
     Log.d(_kTag, 'Snapshot');
 
@@ -166,7 +172,10 @@ class ReportHandlerService {
     await _clearPendingIncomingVideoChunks();
   }
 
-  Future<bool> _handleWorkerVideoChunkSnapshot(Snapshot request) async {
+  Future<bool> _handleWorkerVideoChunkSnapshot(
+    Snapshot request, {
+    required bool offlineFile,
+  }) async {
     final name = request.name;
     if (!name.startsWith('$_kVideoChunkSnapshotPrefix:')) return false;
 
@@ -209,18 +218,21 @@ class ReportHandlerService {
 
     final chunkStartTimeUtc = DateTime.fromMillisecondsSinceEpoch(startMs).toUtc();
     final chunkEndTimeUtc = DateTime.fromMillisecondsSinceEpoch(endMs).toUtc();
-    final suiteInfoAt = _currentRunSuiteInfoReceivedAt;
-    if (suiteInfoAt != null &&
-        chunkEndTimeUtc.isBefore(suiteInfoAt.subtract(_kStaleVideoTolerance))) {
-      Log.w(
-        _kTag,
-        'drop stale worker video chunk from previous run '
-        'sessionId=$sessionId chunkIndex=$chunkIndex '
-        'chunkStart=$chunkStartTimeUtc chunkEnd=$chunkEndTimeUtc '
-        'suiteInfoAt=$suiteInfoAt',
-      );
-      await _markWorkerVideoSessionFailed(sessionId);
-      return true;
+    if (!offlineFile) {
+      final suiteInfoAt = _currentRunSuiteInfoReceivedAt;
+      if (suiteInfoAt != null &&
+          chunkEndTimeUtc
+              .isBefore(suiteInfoAt.subtract(_kStaleVideoTolerance))) {
+        Log.w(
+          _kTag,
+          'drop stale worker video chunk from previous run '
+          'sessionId=$sessionId chunkIndex=$chunkIndex '
+          'chunkStart=$chunkStartTimeUtc chunkEnd=$chunkEndTimeUtc '
+          'suiteInfoAt=$suiteInfoAt',
+        );
+        await _markWorkerVideoSessionFailed(sessionId);
+        return true;
+      }
     }
 
     final chunkData = request.image as Uint8List;

@@ -50,9 +50,12 @@ abstract class _WorkerVideoRecordingServiceDesktopBase
 
   Future<File> postProcessRecordedFile(File file) async => file;
 
+  Future<void> cleanupBeforeStart() async {}
+
   @override
   Future<void> startRecord() async {
     try {
+      await cleanupBeforeStart();
       if (_process != null) await _stopProcessSafely();
 
       final targetPath = await _createTargetPath();
@@ -221,6 +224,18 @@ class _WorkerVideoRecordingServiceMacos
 
   @override
   String get fileExtension => 'mov';
+
+  @override
+  Future<void> cleanupBeforeStart() async {
+    await _killOrphanRecorderProcesses(
+      processName: 'screencapture',
+      marker: 'convenient_test_video',
+    );
+    await _killOrphanRecorderProcesses(
+      processName: 'ffmpeg',
+      marker: 'convenient_test_video',
+    );
+  }
 
   @override
   Future<File> postProcessRecordedFile(File file) async {
@@ -457,7 +472,19 @@ class _WorkerVideoRecordingServiceMacos
 
   Future<int> _stopBySigint(Process process) async {
     process.kill(ProcessSignal.sigint);
-    return process.exitCode;
+    return process.exitCode.timeout(
+      const Duration(seconds: 5),
+      onTimeout: () {
+        process.kill(ProcessSignal.sigterm);
+        return process.exitCode.timeout(
+          const Duration(seconds: 3),
+          onTimeout: () {
+            process.kill();
+            return -1;
+          },
+        );
+      },
+    );
   }
 
   Future<int> _stopFfmpeg(Process process) async {
@@ -473,6 +500,39 @@ class _WorkerVideoRecordingServiceMacos
         return -1;
       },
     );
+  }
+
+  Future<void> _killOrphanRecorderProcesses({
+    required String processName,
+    required String marker,
+  }) async {
+    final pgrep = await Process.run('pgrep', ['-f', processName]);
+    if (pgrep.exitCode != 0) return;
+
+    final pidLines = (pgrep.stdout as String)
+        .split('\n')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty);
+
+    for (final pidText in pidLines) {
+      final targetPid = int.tryParse(pidText);
+      if (targetPid == null || targetPid <= 0 || targetPid == pid) continue;
+
+      final ps = await Process.run('ps', ['-p', '$targetPid', '-o', 'command=']);
+      if (ps.exitCode != 0) continue;
+      final command = (ps.stdout as String).trim();
+      if (!command.contains(marker)) continue;
+
+      Log.w(
+        _kTag,
+        'cleanupBeforeStart terminate orphan recorder '
+        'processName=$processName pid=$targetPid command="$command"',
+      );
+
+      Process.killPid(targetPid, ProcessSignal.sigint);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      Process.killPid(targetPid, ProcessSignal.sigterm);
+    }
   }
 }
 

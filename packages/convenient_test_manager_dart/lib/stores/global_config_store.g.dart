@@ -6,9 +6,9 @@ part of 'global_config_store.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-_GlobalConfigNullable _$GlobalConfigNullableFromJson(
+_$GlobalConfigNullableImpl _$$GlobalConfigNullableImplFromJson(
         Map<String, dynamic> json) =>
-    _GlobalConfigNullable(
+    _$GlobalConfigNullableImpl(
       isolationMode: json['isolationMode'] as bool?,
       enableReportSaver: json['enableReportSaver'] as bool?,
       goldenDiffGitRepo: json['goldenDiffGitRepo'] as String?,
@@ -16,8 +16,8 @@ _GlobalConfigNullable _$GlobalConfigNullableFromJson(
       reportSavePath: json['reportSavePath'] as String?,
     );
 
-Map<String, dynamic> _$GlobalConfigNullableToJson(
-        _GlobalConfigNullable instance) =>
+Map<String, dynamic> _$$GlobalConfigNullableImplToJson(
+        _$GlobalConfigNullableImpl instance) =>
     <String, dynamic>{
       'isolationMode': instance.isolationMode,
       'enableReportSaver': instance.enableReportSaver,
