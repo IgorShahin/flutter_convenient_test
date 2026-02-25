@@ -1,11 +1,11 @@
 import 'dart:typed_data';
 
-import 'package:collection/collection.dart';
 import 'package:convenient_test_common/convenient_test_common.dart';
 import 'package:convenient_test_manager/stores/highlight_store.dart';
 import 'package:convenient_test_manager/stores/home_page_store.dart';
 import 'package:convenient_test_manager/stores/video_player_store.dart';
 import 'package:convenient_test_manager_dart/misc/runtime_platform.dart';
+import 'package:convenient_test_manager_dart/services/allure_report_service.dart';
 import 'package:convenient_test_manager_dart/services/misc_dart_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:get_it/get_it.dart';
@@ -32,8 +32,8 @@ class MiscFlutterService extends MiscDartService {
     String? path;
     Uint8List? bytes;
     if (pathOverride == null) {
-      final result = await FilePicker.platform
-          .pickFiles(allowMultiple: false, withData: true, withReadStream: true);
+      final result = await FilePicker.platform.pickFiles(
+          allowMultiple: false, withData: true, withReadStream: true);
       if (result == null) return;
 
       final file = result.files.single;
@@ -94,5 +94,9 @@ class MiscFlutterService extends MiscDartService {
       chunks.addAll(chunk);
     }
     return Uint8List.fromList(chunks);
+  }
+
+  Future<void> openAllureReportSite() async {
+    await GetIt.I.get<ManagerAllureReportService>().generateAndOpenSite();
   }
 }

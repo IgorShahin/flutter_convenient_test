@@ -1,4 +1,6 @@
 import 'package:convenient_test_common_dart/convenient_test_common_dart.dart';
+import 'package:convenient_test_manager_dart/misc/runtime_platform.dart';
+import 'package:convenient_test_manager_dart/services/allure_report_service.dart';
 import 'package:convenient_test_manager_dart/services/convenient_test_manager_service.dart';
 import 'package:convenient_test_manager_dart/services/fs_service.dart';
 import 'package:convenient_test_manager_dart/services/misc_dart_service.dart';
@@ -8,7 +10,6 @@ import 'package:convenient_test_manager_dart/services/report_handler_service.dar
 import 'package:convenient_test_manager_dart/services/report_saver_service.dart';
 import 'package:convenient_test_manager_dart/services/screen_video_recorder_service.dart';
 import 'package:convenient_test_manager_dart/services/vm_service_wrapper_service.dart';
-import 'package:convenient_test_manager_dart/misc/runtime_platform.dart';
 import 'package:convenient_test_manager_dart/stores/global_config_store.dart';
 import 'package:convenient_test_manager_dart/stores/highlight_store.dart';
 import 'package:convenient_test_manager_dart/stores/log_store.dart';
@@ -48,6 +49,8 @@ Future<void> setup({
   getIt.registerSingleton<ReportHandlerService>(ReportHandlerService());
   getIt.registerSingleton<ManagerReportSaverService>(
       ManagerReportSaverService());
+  getIt.registerSingleton<ManagerAllureReportService>(
+      ManagerAllureReportService());
   getIt.registerSingleton<ScreenVideoRecorderService>(
       ScreenVideoRecorderService.create());
 

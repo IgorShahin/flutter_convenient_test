@@ -4,6 +4,7 @@ import 'package:convenient_test_manager/pages/golden_diff_page.dart';
 import 'package:convenient_test_manager/services/misc_flutter_service.dart';
 import 'package:convenient_test_manager/stores/highlight_store.dart';
 import 'package:convenient_test_manager/stores/home_page_store.dart';
+import 'package:convenient_test_manager_dart/misc/runtime_platform.dart';
 import 'package:convenient_test_manager_dart/services/report_saver_service.dart';
 import 'package:convenient_test_manager_dart/services/vm_service_wrapper_service.dart';
 import 'package:convenient_test_manager_dart/stores/worker_super_run_store.dart';
@@ -88,6 +89,11 @@ class HomePageHeaderPanel extends StatelessWidget {
                 onPressed: miscFlutterService.pickFileAndReadReport,
                 text: 'Load Report',
               ),
+              if (supportsIoPlatform)
+                _HeaderButton(
+                  onPressed: miscFlutterService.openAllureReportSite,
+                  text: 'Open Allure',
+                ),
               _HeaderButton(
                 onPressed: () =>
                     Navigator.pushNamed(context, GoldenDiffPage.kRouteName),
