@@ -673,8 +673,44 @@ class ManagerAllureReportService {
     final target = Directory(targetDirPath);
     if (!source.existsSync()) return;
     await target.create(recursive: true);
+    final preservedHistory = await _snapshotDirectoryIfExists(
+      Directory('${target.path}${Platform.pathSeparator}history'),
+    );
     await _clearDirectoryContents(target);
     await _copyDirectory(source, target);
+    if (preservedHistory != null) {
+      final historyDir = Directory('${target.path}${Platform.pathSeparator}history');
+      await historyDir.create(recursive: true);
+      await _restoreDirectorySnapshot(
+        files: preservedHistory,
+        targetDir: historyDir,
+      );
+    }
+  }
+
+  Future<Map<String, List<int>>?> _snapshotDirectoryIfExists(
+    Directory directory,
+  ) async {
+    if (!directory.existsSync()) return null;
+    final snapshot = <String, List<int>>{};
+    final rootPath = directory.path;
+    await for (final entity in directory.list(recursive: true, followLinks: false)) {
+      if (entity is! File) continue;
+      final relativePath = entity.path.substring(rootPath.length + 1);
+      snapshot[relativePath] = await entity.readAsBytes();
+    }
+    return snapshot;
+  }
+
+  Future<void> _restoreDirectorySnapshot({
+    required Map<String, List<int>> files,
+    required Directory targetDir,
+  }) async {
+    for (final entry in files.entries) {
+      final file = File('${targetDir.path}${Platform.pathSeparator}${entry.key}');
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes(entry.value, flush: true);
+    }
   }
 
   Future<void> _clearDirectoryContents(Directory directory) async {
