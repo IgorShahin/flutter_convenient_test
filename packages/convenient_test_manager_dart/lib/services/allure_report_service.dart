@@ -212,6 +212,14 @@ class ManagerAllureReportService {
       _deferredSetUpAllLastStepIndexByLogEntryId.remove(logEntryId);
       for (final sub in request.subEntries) {
         final subMs = _usToMs(sub.time.toInt());
+        final prevIndex = _deferredSetUpAllLastStepIndexByLogEntryId[logEntryId];
+        if (prevIndex != null &&
+            prevIndex >= 0 &&
+            prevIndex < _deferredSetUpAllSteps.length) {
+          final prevStep = _deferredSetUpAllSteps[prevIndex];
+          final prevStart = (prevStep['start'] as int?) ?? subMs;
+          prevStep['stop'] = max(prevStart, subMs);
+        }
         final step = _buildStep(sub, subMs);
         final stepIndex = _deferredSetUpAllSteps.length;
         _deferredSetUpAllSteps.add(step);
@@ -231,16 +239,23 @@ class ManagerAllureReportService {
       final subMs = _usToMs(sub.time.toInt());
       runtime.touchAt(subMs);
 
+      final prevPointer = _lastOpenStepPointerByRuntimeUuid[runtime.uuid];
+      if (prevPointer != null) {
+        _closeStepPointer(runtime: runtime, pointer: prevPointer, stopMs: subMs);
+      }
+
       final step = _buildStep(sub, subMs);
       final routing = _hookRoutingFromLogSubEntry(
         runtime: runtime,
         sub: sub,
       );
-      _lastStepPointerByLogEntryId[logEntryId] = _appendStepByRouting(
+      final pointer = _appendStepByRouting(
         runtime: runtime,
         routing: routing,
         step: step,
       );
+      _lastStepPointerByLogEntryId[logEntryId] = pointer;
+      _lastOpenStepPointerByRuntimeUuid[runtime.uuid] = pointer;
       runtime.logBuffer.writeln(_formatRawLogLine(sub, subMs));
     }
 
@@ -415,6 +430,15 @@ class ManagerAllureReportService {
   Future<void> _finalize(_AllureTestRuntime runtime) async {
     if (_resultsDirPath == null || runtime.finished) return;
     runtime.finished = true;
+
+    final openPointer = _lastOpenStepPointerByRuntimeUuid.remove(runtime.uuid);
+    if (openPointer != null) {
+      _closeStepPointer(
+        runtime: runtime,
+        pointer: openPointer,
+        stopMs: runtime.stopMs,
+      );
+    }
 
     await _attachRecordedVideosToRuntime(runtime);
 
@@ -1013,6 +1037,19 @@ class ManagerAllureReportService {
     }
   }
 
+  void _closeStepPointer({
+    required _AllureTestRuntime runtime,
+    required _AllureStepPointer pointer,
+    required int stopMs,
+  }) {
+    final steps = _stepsForPointer(runtime, pointer);
+    if (steps == null) return;
+    if (pointer.index < 0 || pointer.index >= steps.length) return;
+    final step = steps[pointer.index];
+    final start = (step['start'] as int?) ?? stopMs;
+    step['stop'] = max(start, stopMs);
+  }
+
   String _formatStepName(LogSubEntry sub) {
     final title = sub.title.trim();
     final message = sub.message.trim();
@@ -1537,6 +1574,7 @@ class ManagerAllureReportService {
     _testNameByLogEntryId.clear();
     _runtimeUuidByLogEntryId.clear();
     _lastStepPointerByLogEntryId.clear();
+    _lastOpenStepPointerByRuntimeUuid.clear();
     _pendingSnapshotsByLogEntryId.clear();
     _deferredSetUpAllSteps.clear();
     _deferredSetUpAllLastStepIndexByLogEntryId.clear();
@@ -1589,6 +1627,7 @@ class ManagerAllureReportService {
   final _testNameByLogEntryId = <int, String>{};
   final _runtimeUuidByLogEntryId = <int, String>{};
   final _lastStepPointerByLogEntryId = <int, _AllureStepPointer>{};
+  final _lastOpenStepPointerByRuntimeUuid = <String, _AllureStepPointer>{};
   final _pendingSnapshotsByLogEntryId = <int, List<_PendingSnapshot>>{};
   final _deferredSetUpAllSteps = <Map<String, dynamic>>[];
   final _deferredSetUpAllLastStepIndexByLogEntryId = <int, int>{};
