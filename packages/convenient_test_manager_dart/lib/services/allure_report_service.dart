@@ -527,14 +527,47 @@ class ManagerAllureReportService {
 
   String _displayNameForTest(String testName) {
     final suiteInfo = _suiteInfo;
-    if (suiteInfo == null) return testName;
-    final entryId = _resolveSuiteEntryIdForTestName(suiteInfo, testName);
-    if (entryId == null) return testName;
-    final entry = suiteInfo.entryMap[entryId];
-    if (entry is TestInfo && entry.name.trim().isNotEmpty) {
-      return entry.name.trim();
+    final raw = () {
+      if (suiteInfo == null) return testName;
+      final entryId = _resolveSuiteEntryIdForTestName(suiteInfo, testName);
+      if (entryId == null) return testName;
+      final entry = suiteInfo.entryMap[entryId];
+      if (entry is TestInfo && entry.name.trim().isNotEmpty) {
+        return entry.name.trim();
+      }
+      return testName;
+    }();
+    return _stripGroupPrefixFromDisplayName(
+      rawDisplayName: raw,
+      suiteGroupNames: _suiteGroupNamesForTest(testName),
+    );
+  }
+
+  String _stripGroupPrefixFromDisplayName({
+    required String rawDisplayName,
+    required List<String> suiteGroupNames,
+  }) {
+    var ans = rawDisplayName.trim();
+    if (ans.isEmpty || suiteGroupNames.isEmpty) return ans;
+
+    final orderedGroups = suiteGroupNames.toList()
+      ..sort((a, b) => b.length.compareTo(a.length));
+
+    var changed = true;
+    while (changed) {
+      changed = false;
+      for (final groupName in orderedGroups) {
+        final prefix = groupName.trim();
+        if (prefix.isEmpty) continue;
+        if (ans.length <= prefix.length) continue;
+        if (ans.startsWith('$prefix ')) {
+          ans = ans.substring(prefix.length).trimLeft();
+          changed = true;
+          break;
+        }
+      }
     }
-    return testName;
+    return ans;
   }
 
   void _decorateSetupFixtureByGroups({
