@@ -102,6 +102,19 @@ class ManagerAllureReportService {
         return;
       }
 
+      final cleanUri = _buildApiUri(
+        settings.apiBaseUrl,
+        '/clean-results',
+        projectId: settings.projectId,
+      );
+      final cleanStatus = await _httpGetStatus(cleanUri.toString());
+      if (cleanStatus != 404 && (cleanStatus < 200 || cleanStatus >= 300)) {
+        Log.w(
+          _kTag,
+          'auto-publish clean-results returned status=$cleanStatus uri=$cleanUri',
+        );
+      }
+
       final sendStatus = await _sendResultsToAllureDocker(
         sourceDirPath: sourceResultsDir,
         apiBaseUrl: settings.apiBaseUrl,
