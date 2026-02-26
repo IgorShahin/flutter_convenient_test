@@ -21,6 +21,10 @@ class ManagerAllureReportService {
       'CONVENIENT_TEST_ALLURE_DOCKER_PROJECT_ID';
   static const _kAutoPublishProjectPrefixEnvKey =
       'CONVENIENT_TEST_ALLURE_DOCKER_PROJECT_PREFIX';
+  static const _kAutoPublishProjectEnvEnvKey =
+      'CONVENIENT_TEST_ALLURE_DOCKER_PROJECT_ENV';
+  static const _kAutoPublishProjectRepoEnvKey =
+      'CONVENIENT_TEST_ALLURE_DOCKER_PROJECT_REPO';
   static const _kDefaultDockerApiBaseUrl =
       'http://localhost:5050/allure-docker-service';
   static const _kDefaultProjectId = 'default';
@@ -28,6 +32,8 @@ class ManagerAllureReportService {
   static const _kConfigApiBaseUrlKey = 'allureDockerApiBaseUrl';
   static const _kConfigProjectIdKey = 'allureDockerProjectId';
   static const _kConfigProjectPrefixKey = 'allureDockerProjectPrefix';
+  static const _kConfigProjectEnvKey = 'allureDockerProjectEnv';
+  static const _kConfigProjectRepoKey = 'allureDockerProjectRepo';
 
   Future<void> save(ReportCollection request) async {
     if (!supportsIoPlatform) return;
@@ -51,6 +57,8 @@ class ManagerAllureReportService {
       Log.w(_kTag, 'generateAndOpenSite skipped on non-io runtime');
       return;
     }
+
+    await autoPublishToDockerIfConfigured();
 
     final settings = await _resolveAutoPublishSettings();
     final latestReportUri = _buildApiUri(
@@ -207,7 +215,10 @@ class ManagerAllureReportService {
       runtime.touchAt(subMs);
 
       final step = _buildStep(sub, subMs);
-      final routing = _hookRoutingFromLogSubEntry(sub);
+      final routing = _hookRoutingFromLogSubEntry(
+        runtime: runtime,
+        sub: sub,
+      );
       _lastStepPointerByLogEntryId[logEntryId] = _appendStepByRouting(
         runtime: runtime,
         routing: routing,
@@ -443,7 +454,7 @@ class ManagerAllureReportService {
   List<Map<String, String>> _suiteLabelsForTest(String testName) {
     final suiteInfo = _suiteInfo;
     if (suiteInfo == null) return const [];
-    final entryId = suiteInfo.getEntryIdFromName(testName);
+    final entryId = _resolveSuiteEntryIdForTestName(suiteInfo, testName);
     if (entryId == null) return const [];
 
     final groupNames = <String>[];
@@ -497,6 +508,52 @@ class ManagerAllureReportService {
     }
 
     return labels;
+  }
+
+  int? _resolveSuiteEntryIdForTestName(SuiteInfo suiteInfo, String testName) {
+    final exact = suiteInfo.getEntryIdFromName(testName);
+    if (exact != null) return exact;
+
+    final normalizedTestName = _normalizeSuiteName(testName);
+    if (normalizedTestName.isEmpty) return null;
+
+    int? bestId;
+    var bestScore = -1;
+    for (final entry in suiteInfo.entryMap.entries) {
+      if (entry.value is! TestInfo) continue;
+      final candidateName = entry.value.name;
+      final normalizedCandidate = _normalizeSuiteName(candidateName);
+      if (normalizedCandidate.isEmpty) continue;
+
+      var score = -1;
+      if (normalizedCandidate == normalizedTestName) {
+        score = 100000 + normalizedCandidate.length;
+      } else if (normalizedTestName.endsWith(normalizedCandidate) &&
+          (normalizedTestName.length == normalizedCandidate.length ||
+              normalizedTestName[normalizedTestName.length -
+                      normalizedCandidate.length -
+                      1] ==
+                  ' ')) {
+        // Common case: runtime test name contains group prefixes while suite
+        // info contains only the leaf test title.
+        score = 10000 + normalizedCandidate.length;
+      } else if (normalizedTestName.contains(normalizedCandidate)) {
+        score = normalizedCandidate.length;
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestId = entry.key;
+      }
+    }
+
+    return bestScore >= 0 ? bestId : null;
+  }
+
+  String _normalizeSuiteName(String input) {
+    final lower = input.trim().toLowerCase();
+    if (lower.isEmpty) return '';
+    return lower.replaceAll(RegExp(r'\s+'), ' ');
   }
 
   _AllureTestRuntime _ensureActiveRuntime(String testName) {
@@ -632,7 +689,10 @@ class ManagerAllureReportService {
     _deferredSetUpAllInjected = true;
   }
 
-  _AllureHookRouting _hookRoutingFromLogSubEntry(LogSubEntry sub) {
+  _AllureHookRouting _hookRoutingFromLogSubEntry({
+    required _AllureTestRuntime runtime,
+    required LogSubEntry sub,
+  }) {
     final haystack = '${sub.title} ${sub.message}'.toUpperCase();
     if (haystack.contains('TEARDOWN_ALL')) {
       return const _AllureHookRouting.after('TEARDOWN_ALL');
@@ -646,7 +706,20 @@ class ManagerAllureReportService {
     if (haystack.contains('SETUP')) {
       return const _AllureHookRouting.before('SETUP');
     }
+    if (_isBodyStartMarker(sub)) {
+      runtime.hasSeenBodyStart = true;
+      return const _AllureHookRouting.body();
+    }
+    if (!runtime.hasSeenBodyStart) {
+      // Before the explicit START marker, treat steps as per-test setup.
+      return const _AllureHookRouting.before('SETUP');
+    }
     return const _AllureHookRouting.body();
+  }
+
+  bool _isBodyStartMarker(LogSubEntry sub) {
+    final name = _formatStepName(sub).trim().toUpperCase();
+    return name == 'START' || name.startsWith('START ');
   }
 
   _AllureStepPointer _appendStepByRouting({
@@ -898,10 +971,12 @@ class ManagerAllureReportService {
     final uri = _buildApiUri(apiBaseUrl, '/send-results', projectId: projectId);
     final boundary =
         '----ct-boundary-${DateTime.now().toUtc().microsecondsSinceEpoch}-${_random.nextInt(1 << 32)}';
-    final rootPath =
-        sourceDirPath.endsWith(Platform.pathSeparator) ? sourceDirPath : '$sourceDirPath${Platform.pathSeparator}';
+    final rootPath = sourceDirPath.endsWith(Platform.pathSeparator)
+        ? sourceDirPath
+        : '$sourceDirPath${Platform.pathSeparator}';
 
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10);
     try {
       final req = await client.postUrl(uri);
       req.headers.contentType = ContentType('multipart', 'form-data',
@@ -910,7 +985,9 @@ class ManagerAllureReportService {
       for (final file in files) {
         final fileName = file.path.startsWith(rootPath)
             ? file.path.substring(rootPath.length)
-            : (file.uri.pathSegments.isEmpty ? file.path : file.uri.pathSegments.last);
+            : (file.uri.pathSegments.isEmpty
+                ? file.path
+                : file.uri.pathSegments.last);
         req.add(utf8.encode('--$boundary\r\n'));
         req.add(utf8.encode(
           'Content-Disposition: form-data; name="files[]"; filename="${_escapeHeaderValue(fileName)}"\r\n',
@@ -939,14 +1016,17 @@ class ManagerAllureReportService {
     required String sourceDirPath,
   }) async {
     final uri = _buildApiUri(apiBaseUrl, '/send-results', projectId: projectId);
-    final rootPath =
-        sourceDirPath.endsWith(Platform.pathSeparator) ? sourceDirPath : '$sourceDirPath${Platform.pathSeparator}';
+    final rootPath = sourceDirPath.endsWith(Platform.pathSeparator)
+        ? sourceDirPath
+        : '$sourceDirPath${Platform.pathSeparator}';
 
     final results = <Map<String, String>>[];
     for (final file in files) {
       final relativeName = file.path.startsWith(rootPath)
           ? file.path.substring(rootPath.length)
-          : (file.uri.pathSegments.isEmpty ? file.path : file.uri.pathSegments.last);
+          : (file.uri.pathSegments.isEmpty
+              ? file.path
+              : file.uri.pathSegments.last);
       final bytes = await file.readAsBytes();
       results.add({
         'file_name': relativeName,
@@ -958,7 +1038,8 @@ class ManagerAllureReportService {
       'results': results,
     });
 
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10);
     try {
       final req = await client.postUrl(uri);
       req.headers.contentType = ContentType('application', 'json');
@@ -1011,14 +1092,33 @@ class ManagerAllureReportService {
       return raw;
     })();
 
-    final configProjectId = _toNullableString(configJson?[_kConfigProjectIdKey]);
+    final configProjectId =
+        _toNullableString(configJson?[_kConfigProjectIdKey]);
     final envProjectId = environmentValue(_kAutoPublishProjectIdEnvKey);
     final configProjectPrefix =
         _toNullableString(configJson?[_kConfigProjectPrefixKey]);
     final envProjectPrefix = environmentValue(_kAutoPublishProjectPrefixEnvKey);
-    final projectId = _resolveProjectId(
+    final configProjectEnv =
+        _toNullableString(configJson?[_kConfigProjectEnvKey]);
+    final configProjectRepo =
+        _toNullableString(configJson?[_kConfigProjectRepoKey]);
+    final envProjectEnv = _firstNonEmptyEnvironmentValue(const [
+      _kAutoPublishProjectEnvEnvKey,
+      'CONVENIENT_TEST_ENV',
+      'APP_ENV',
+      'ENVIRONMENT',
+      'FLAVOR',
+    ]);
+    final envProjectRepo = _firstNonEmptyEnvironmentValue(const [
+      _kAutoPublishProjectRepoEnvKey,
+      'GITHUB_REPOSITORY',
+    ]);
+
+    final projectId = await _resolveProjectId(
       explicitProjectId: configProjectId ?? envProjectId,
       projectPrefix: configProjectPrefix ?? envProjectPrefix,
+      explicitEnv: configProjectEnv ?? envProjectEnv,
+      explicitRepo: configProjectRepo ?? envProjectRepo,
     );
 
     return _AllureAutoPublishSettings(
@@ -1066,24 +1166,82 @@ class ManagerAllureReportService {
     return trimmed;
   }
 
-  String _resolveProjectId({
+  Future<String> _resolveProjectId({
     required String? explicitProjectId,
     required String? projectPrefix,
-  }) {
+    required String? explicitEnv,
+    required String? explicitRepo,
+  }) async {
     if (explicitProjectId != null && explicitProjectId.trim().isNotEmpty) {
       return _normalizeProjectId(explicitProjectId);
     }
 
-    final cwdName = _lastPathSegment(Directory.current.path);
+    final repoNameRaw = await _resolveRepoName(explicitRepo: explicitRepo);
+    final envNameRaw = _resolveEnvironmentName(explicitEnv: explicitEnv);
+    final repoName = _normalizeProjectId(repoNameRaw);
+    final envName = _normalizeProjectId(envNameRaw);
     final prefix = projectPrefix?.trim();
     final raw = [
       if (prefix != null && prefix.isNotEmpty) prefix,
-      cwdName.isEmpty ? 'project' : cwdName,
+      repoName.isEmpty ? 'project' : repoName,
       Platform.operatingSystem,
+      envName.isEmpty ? 'unknown' : envName,
     ].join('-');
     final normalized = _normalizeProjectId(raw);
     if (normalized.isEmpty) return _kDefaultProjectId;
     return normalized;
+  }
+
+  Future<String> _resolveRepoName({required String? explicitRepo}) async {
+    final fromExplicit = _normalizeRepoNameCandidate(explicitRepo);
+    if (fromExplicit != null) return fromExplicit;
+
+    try {
+      final result = await Process.run(
+        'git',
+        ['rev-parse', '--show-toplevel'],
+        runInShell: true,
+      ).timeout(const Duration(seconds: 2));
+      if (result.exitCode == 0) {
+        final root = (result.stdout as String).trim();
+        final rootSegment = _lastPathSegment(root);
+        final normalized = _normalizeRepoNameCandidate(rootSegment);
+        if (normalized != null) return normalized;
+      }
+    } catch (_) {
+      // Fall back to current directory name.
+    }
+
+    final cwdName = _lastPathSegment(Directory.current.path);
+    return _normalizeRepoNameCandidate(cwdName) ?? 'project';
+  }
+
+  String _resolveEnvironmentName({required String? explicitEnv}) {
+    final normalized = _normalizeRepoNameCandidate(explicitEnv);
+    if (normalized != null) return normalized;
+    return 'unknown';
+  }
+
+  String? _normalizeRepoNameCandidate(String? raw) {
+    if (raw == null) return null;
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+
+    // Support formats like "org/repo" from CI variables.
+    final last = _lastPathSegment(trimmed.replaceAll(':', '/'));
+    final clean = last.trim();
+    if (clean.isEmpty) return null;
+    return clean;
+  }
+
+  String? _firstNonEmptyEnvironmentValue(List<String> keys) {
+    for (final key in keys) {
+      final value = environmentValue(key);
+      if (value != null && value.trim().isNotEmpty) {
+        return value;
+      }
+    }
+    return null;
   }
 
   String _lastPathSegment(String path) {
@@ -1098,7 +1256,8 @@ class ManagerAllureReportService {
     final buffer = StringBuffer();
     var prevDash = false;
     for (final code in lower.codeUnits) {
-      final isAlphaNum = (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
+      final isAlphaNum =
+          (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
       final isAllowedPunct = code == 45 || code == 95 || code == 46;
       if (isAlphaNum || isAllowedPunct) {
         buffer.writeCharCode(code);
@@ -1229,6 +1388,7 @@ class _AllureTestRuntime {
   String? status;
   Map<String, dynamic>? statusDetails;
   bool finished = false;
+  bool hasSeenBodyStart = false;
 
   int? _startMs;
   int? _stopMs;

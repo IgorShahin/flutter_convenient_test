@@ -16,11 +16,11 @@ class ManagerReportSaverService {
   set enable(bool val) => GlobalConfigStore.config.enableReportSaver = val;
 
   Future<void> save(ReportCollection request) async {
-    if (!enable) return;
-
-    // need to be sync, otherwise when two reports come together they may conflict
-    File(await _getReportPath())
-        .writeAsBytesSync(request.writeToBuffer(), mode: FileMode.append);
+    if (enable) {
+      // need to be sync, otherwise when two reports come together they may conflict
+      File(await _getReportPath())
+          .writeAsBytesSync(request.writeToBuffer(), mode: FileMode.append);
+    }
     await GetIt.I.get<ManagerAllureReportService>().save(request);
   }
 
