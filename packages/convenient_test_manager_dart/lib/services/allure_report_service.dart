@@ -502,7 +502,8 @@ class ManagerAllureReportService {
   }
 
   List<Map<String, String>> _suiteLabelsForTest(String testName) {
-    final normalized = _suiteGroupNamesForTest(testName);
+    final normalized =
+        _compactGroupHierarchyNames(_suiteGroupNamesForTest(testName));
     if (normalized.isEmpty) return const [];
 
     final labels = <Map<String, String>>[];
@@ -578,7 +579,8 @@ class ManagerAllureReportService {
     }();
     return _stripGroupPrefixFromDisplayName(
       rawDisplayName: raw,
-      suiteGroupNames: _suiteGroupNamesForTest(testName),
+      suiteGroupNames:
+          _compactGroupHierarchyNames(_suiteGroupNamesForTest(testName)),
     );
   }
 
@@ -617,6 +619,7 @@ class ManagerAllureReportService {
     if (setupFixture == null) return;
     if (setupFixture.steps.length <= 1) return;
 
+    final compactedGroupNames = _compactGroupHierarchyNames(suiteGroupNames);
     final blocks = <List<Map<String, dynamic>>>[];
     var currentBlock = <Map<String, dynamic>>[];
     for (final step in setupFixture.steps) {
@@ -633,13 +636,13 @@ class ManagerAllureReportService {
     if (blocks.length <= 1) return;
 
     final wrappers = <Map<String, dynamic>>[];
-    final offset = max(0, suiteGroupNames.length - blocks.length);
+    final offset = max(0, compactedGroupNames.length - blocks.length);
     for (var i = 0; i < blocks.length; i++) {
       final block = blocks[i];
       final start = (block.first['start'] as int?) ?? runtime.startMs;
       final stop = (block.last['stop'] as int?) ?? runtime.stopMs;
-      final groupName = (i + offset < suiteGroupNames.length)
-          ? suiteGroupNames[i + offset]
+      final groupName = (i + offset < compactedGroupNames.length)
+          ? compactedGroupNames[i + offset]
           : 'group-${i + 1}';
       final hasFailed = block.any((e) =>
           (e['status'] as String?) == 'failed' ||
@@ -656,6 +659,25 @@ class ManagerAllureReportService {
     setupFixture.steps
       ..clear()
       ..addAll(wrappers);
+  }
+
+  List<String> _compactGroupHierarchyNames(List<String> rawGroupNames) {
+    if (rawGroupNames.isEmpty) return const [];
+    final compacted = <String>[];
+    for (final raw in rawGroupNames) {
+      var name = raw.trim();
+      if (name.isEmpty) continue;
+      for (final parent in compacted) {
+        final prefix = parent.trim();
+        if (prefix.isEmpty) continue;
+        if (name.length > prefix.length && name.startsWith('$prefix ')) {
+          name = name.substring(prefix.length).trimLeft();
+          break;
+        }
+      }
+      compacted.add(name);
+    }
+    return compacted;
   }
 
   Future<void> _attachRecordedVideosToRuntime(_AllureTestRuntime runtime) async {
