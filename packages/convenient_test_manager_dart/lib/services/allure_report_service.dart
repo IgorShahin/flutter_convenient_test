@@ -694,9 +694,47 @@ class ManagerAllureReportService {
         .toList();
     if (files.isEmpty) return 0;
 
+    final multipartStatus = await _sendResultsMultipart(
+      files: files,
+      apiBaseUrl: apiBaseUrl,
+      projectId: projectId,
+      sourceDirPath: sourceDirPath,
+    );
+    if (multipartStatus >= 200 && multipartStatus < 300) {
+      Log.i(_kTag, 'send-results success via multipart files[]');
+      return multipartStatus;
+    }
+
+    Log.w(
+      _kTag,
+      'send-results multipart failed status=$multipartStatus, retrying as json base64',
+    );
+    final jsonStatus = await _sendResultsJsonBase64(
+      files: files,
+      apiBaseUrl: apiBaseUrl,
+      projectId: projectId,
+      sourceDirPath: sourceDirPath,
+    );
+    if (jsonStatus >= 200 && jsonStatus < 300) {
+      Log.i(_kTag, 'send-results success via json results[]');
+    }
+    return jsonStatus;
+  }
+
+  String _escapeHeaderValue(String value) =>
+      value.replaceAll('\\', r'\\').replaceAll('"', r'\"');
+
+  Future<int> _sendResultsMultipart({
+    required List<File> files,
+    required String apiBaseUrl,
+    required String projectId,
+    required String sourceDirPath,
+  }) async {
     final uri = _buildApiUri(apiBaseUrl, '/send-results', projectId: projectId);
     final boundary =
         '----ct-boundary-${DateTime.now().toUtc().microsecondsSinceEpoch}-${_random.nextInt(1 << 32)}';
+    final rootPath =
+        sourceDirPath.endsWith(Platform.pathSeparator) ? sourceDirPath : '$sourceDirPath${Platform.pathSeparator}';
 
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
     try {
@@ -705,9 +743,9 @@ class ManagerAllureReportService {
           parameters: {'boundary': boundary});
 
       for (final file in files) {
-        final fileName = file.uri.pathSegments.isEmpty
-            ? file.path
-            : file.uri.pathSegments.last;
+        final fileName = file.path.startsWith(rootPath)
+            ? file.path.substring(rootPath.length)
+            : (file.uri.pathSegments.isEmpty ? file.path : file.uri.pathSegments.last);
         req.add(utf8.encode('--$boundary\r\n'));
         req.add(utf8.encode(
           'Content-Disposition: form-data; name="files[]"; filename="${_escapeHeaderValue(fileName)}"\r\n',
@@ -721,13 +759,55 @@ class ManagerAllureReportService {
       final resp = await req.close().timeout(const Duration(minutes: 2));
       await resp.drain<void>();
       return resp.statusCode;
+    } catch (e, s) {
+      Log.w(_kTag, 'send-results multipart exception e=$e s=$s');
+      return 0;
     } finally {
       client.close(force: true);
     }
   }
 
-  String _escapeHeaderValue(String value) =>
-      value.replaceAll('\\', r'\\').replaceAll('"', r'\"');
+  Future<int> _sendResultsJsonBase64({
+    required List<File> files,
+    required String apiBaseUrl,
+    required String projectId,
+    required String sourceDirPath,
+  }) async {
+    final uri = _buildApiUri(apiBaseUrl, '/send-results', projectId: projectId);
+    final rootPath =
+        sourceDirPath.endsWith(Platform.pathSeparator) ? sourceDirPath : '$sourceDirPath${Platform.pathSeparator}';
+
+    final results = <Map<String, String>>[];
+    for (final file in files) {
+      final relativeName = file.path.startsWith(rootPath)
+          ? file.path.substring(rootPath.length)
+          : (file.uri.pathSegments.isEmpty ? file.path : file.uri.pathSegments.last);
+      final bytes = await file.readAsBytes();
+      results.add({
+        'file_name': relativeName,
+        'content_base64': base64Encode(bytes),
+      });
+    }
+
+    final payload = jsonEncode({
+      'results': results,
+    });
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    try {
+      final req = await client.postUrl(uri);
+      req.headers.contentType = ContentType('application', 'json');
+      req.add(utf8.encode(payload));
+      final resp = await req.close().timeout(const Duration(minutes: 2));
+      await resp.drain<void>();
+      return resp.statusCode;
+    } catch (e, s) {
+      Log.w(_kTag, 'send-results json exception e=$e s=$s');
+      return 0;
+    } finally {
+      client.close(force: true);
+    }
+  }
 
   Future<int> _httpGetStatus(String url) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
