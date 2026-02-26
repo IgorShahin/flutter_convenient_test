@@ -458,22 +458,45 @@ class ManagerAllureReportService {
     final normalized = groupNames.reversed.toList();
     if (normalized.isEmpty) return const [];
 
+    final labels = <Map<String, String>>[];
+    final seen = <String>{};
+    void addLabel(String name, String value) {
+      final clean = value.trim();
+      if (clean.isEmpty) return;
+      final key = '$name::$clean';
+      if (!seen.add(key)) return;
+      labels.add({'name': name, 'value': clean});
+    }
+
+    // Suites tab mapping (Allure has 3 canonical levels).
     if (normalized.length == 1) {
-      return [
-        {'name': 'suite', 'value': normalized.first},
-      ];
+      addLabel('suite', normalized.first);
+    } else if (normalized.length == 2) {
+      addLabel('parentSuite', normalized.first);
+      addLabel('suite', normalized.last);
+    } else {
+      addLabel('parentSuite', normalized.first);
+      addLabel('suite', normalized[1]);
+      addLabel('subSuite', normalized.sublist(2).join(' / '));
     }
-    if (normalized.length == 2) {
-      return [
-        {'name': 'parentSuite', 'value': normalized.first},
-        {'name': 'suite', 'value': normalized.last},
-      ];
+
+    // Behavior tab mapping.
+    addLabel('epic', normalized.first);
+    if (normalized.length >= 2) {
+      addLabel('feature', normalized[1]);
     }
-    return [
-      {'name': 'parentSuite', 'value': normalized.first},
-      {'name': 'suite', 'value': normalized[1]},
-      {'name': 'subSuite', 'value': normalized.sublist(2).join(' / ')},
-    ];
+    if (normalized.length >= 3) {
+      addLabel('story', normalized.sublist(2).join(' / '));
+    }
+
+    // Keep full hierarchy searchable and visible in custom labels/tags.
+    final groupPath = normalized.join(' / ');
+    addLabel('tag', 'groupPath:$groupPath');
+    for (var i = 0; i < normalized.length; i++) {
+      addLabel('tag', 'groupLevel${i + 1}:${normalized[i]}');
+    }
+
+    return labels;
   }
 
   _AllureTestRuntime _ensureActiveRuntime(String testName) {
@@ -1276,9 +1299,25 @@ class _AllureFixtureRuntime {
         'stage': 'finished',
         'start': _startMs ?? _nowMs(),
         'stop': _stopMs ?? _nowMs(),
-        'steps': steps,
+        'steps': _buildDisplaySteps(),
         'attachments': attachments,
       };
+
+  List<Map<String, dynamic>> _buildDisplaySteps() {
+    if (steps.length <= 1) return steps;
+
+    final start = (steps.first['start'] as int?) ?? (_startMs ?? _nowMs());
+    final stop = (steps.last['stop'] as int?) ?? (_stopMs ?? _nowMs());
+    final wrapper = <String, dynamic>{
+      'name': '$name GROUP',
+      'status': _status ?? 'passed',
+      'stage': 'finished',
+      'start': start,
+      'stop': stop,
+      'steps': steps,
+    };
+    return [wrapper];
+  }
 }
 
 enum _AllureHookSection { body, before, after }
