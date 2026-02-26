@@ -416,6 +416,8 @@ class ManagerAllureReportService {
     if (_resultsDirPath == null || runtime.finished) return;
     runtime.finished = true;
 
+    await _attachRecordedVideosToRuntime(runtime);
+
     if (runtime.logBuffer.isNotEmpty) {
       final source = _nextArtifactName('attachment', 'txt');
       final path = '$_resultsDirPath$source';
@@ -630,6 +632,122 @@ class ManagerAllureReportService {
     setupFixture.steps
       ..clear()
       ..addAll(wrappers);
+  }
+
+  Future<void> _attachRecordedVideosToRuntime(_AllureTestRuntime runtime) async {
+    final videoDirPath =
+        await GetIt.I.get<FsService>().getActiveSuperRunDataSubDirectory(
+              category: 'Video',
+            );
+    final videoDir = Directory(videoDirPath);
+    if (!videoDir.existsSync()) return;
+
+    final candidates = <File>[];
+    for (final entry in videoDir.listSync(followLinks: false)) {
+      if (entry is! File) continue;
+      if (_consumedVideoAttachmentPaths.contains(entry.path)) continue;
+      final lower = entry.path.toLowerCase();
+      if (!(lower.endsWith('.mov') ||
+          lower.endsWith('.mp4') ||
+          lower.endsWith('.mkv') ||
+          lower.endsWith('.webm'))) {
+        continue;
+      }
+      candidates.add(entry);
+    }
+    if (candidates.isEmpty) return;
+
+    candidates.sort((a, b) {
+      final aMs = a.statSync().modified.toUtc().millisecondsSinceEpoch;
+      final bMs = b.statSync().modified.toUtc().millisecondsSinceEpoch;
+      return aMs.compareTo(bMs);
+    });
+
+    const leadLagToleranceMs = 5 * 60 * 1000;
+    final matched = <File>[];
+    for (final file in candidates) {
+      final stat = file.statSync();
+      final endMs = stat.modified.toUtc().millisecondsSinceEpoch;
+      final startHintMs = _videoStartHintMsFromPath(file.path);
+
+      final overlaps = endMs >= runtime.startMs - leadLagToleranceMs &&
+          (startHintMs ?? endMs) <= runtime.stopMs + leadLagToleranceMs;
+      if (overlaps) {
+        matched.add(file);
+      }
+    }
+
+    if (matched.isEmpty) {
+      final nearest = candidates
+          .map((f) => MapEntry(
+                f,
+                (f.statSync().modified.toUtc().millisecondsSinceEpoch -
+                        runtime.stopMs)
+                    .abs(),
+              ))
+          .toList()
+        ..sort((a, b) => a.value.compareTo(b.value));
+      if (nearest.isNotEmpty && nearest.first.value <= 60 * 1000) {
+        matched.add(nearest.first.key);
+      }
+    }
+
+    for (var i = 0; i < matched.length; i++) {
+      final file = matched[i];
+      final extension = _pathExtension(file.path);
+      final source = _nextArtifactName('attachment', extension);
+      final targetPath = '$_resultsDirPath$source';
+      await file.copy(targetPath);
+
+      runtime.attachments.add({
+        'name': matched.length == 1 ? 'video' : 'video-${i + 1}',
+        'source': source,
+        'type': _videoMimeTypeForExtension(extension),
+      });
+      _consumedVideoAttachmentPaths.add(file.path);
+    }
+  }
+
+  int? _videoStartHintMsFromPath(String path) {
+    final fileName =
+        path.split(Platform.pathSeparator).isEmpty ? path : path.split(Platform.pathSeparator).last;
+    final match = RegExp(r'(\d{8}_\d{6})').firstMatch(fileName);
+    if (match == null) return null;
+
+    final token = match.group(1);
+    if (token == null) return null;
+    try {
+      final y = int.parse(token.substring(0, 4));
+      final m = int.parse(token.substring(4, 6));
+      final d = int.parse(token.substring(6, 8));
+      final hh = int.parse(token.substring(9, 11));
+      final mm = int.parse(token.substring(11, 13));
+      final ss = int.parse(token.substring(13, 15));
+      return DateTime(y, m, d, hh, mm, ss).toUtc().millisecondsSinceEpoch;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _pathExtension(String path) {
+    final dot = path.lastIndexOf('.');
+    if (dot < 0 || dot == path.length - 1) return 'bin';
+    return path.substring(dot + 1).toLowerCase();
+  }
+
+  String _videoMimeTypeForExtension(String extension) {
+    switch (extension) {
+      case 'mp4':
+        return 'video/mp4';
+      case 'mov':
+        return 'video/quicktime';
+      case 'webm':
+        return 'video/webm';
+      case 'mkv':
+        return 'video/x-matroska';
+      default:
+        return 'application/octet-stream';
+    }
   }
 
   int? _resolveSuiteEntryIdForTestName(SuiteInfo suiteInfo, String testName) {
@@ -1426,6 +1544,7 @@ class ManagerAllureReportService {
     _deferredSetUpAllLogBuffer = StringBuffer();
     _deferredSetUpAllInjected = false;
     _suiteInfo = null;
+    _consumedVideoAttachmentPaths.clear();
     _artifactCounter = 0;
     _uuidCounter = 0;
   }
@@ -1483,6 +1602,7 @@ class ManagerAllureReportService {
   bool _autoPublishInProgress = false;
   int _artifactCounter = 0;
   int _uuidCounter = 0;
+  final _consumedVideoAttachmentPaths = <String>{};
   final _lastSuiteInfoDigestBySuperRunId = <String, String>{};
 }
 
