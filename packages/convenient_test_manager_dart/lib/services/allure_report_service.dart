@@ -19,12 +19,15 @@ class ManagerAllureReportService {
       'CONVENIENT_TEST_ALLURE_DOCKER_API_BASE_URL';
   static const _kAutoPublishProjectIdEnvKey =
       'CONVENIENT_TEST_ALLURE_DOCKER_PROJECT_ID';
+  static const _kAutoPublishProjectPrefixEnvKey =
+      'CONVENIENT_TEST_ALLURE_DOCKER_PROJECT_PREFIX';
   static const _kDefaultDockerApiBaseUrl =
       'http://localhost:5050/allure-docker-service';
   static const _kDefaultProjectId = 'default';
   static const _kConfigEnableKey = 'enableAllureDockerAutoPublish';
   static const _kConfigApiBaseUrlKey = 'allureDockerApiBaseUrl';
   static const _kConfigProjectIdKey = 'allureDockerProjectId';
+  static const _kConfigProjectPrefixKey = 'allureDockerProjectPrefix';
 
   Future<void> save(ReportCollection request) async {
     if (!supportsIoPlatform) return;
@@ -848,7 +851,13 @@ class ManagerAllureReportService {
 
     final configProjectId = _toNullableString(configJson?[_kConfigProjectIdKey]);
     final envProjectId = environmentValue(_kAutoPublishProjectIdEnvKey);
-    final projectId = configProjectId ?? envProjectId ?? _kDefaultProjectId;
+    final configProjectPrefix =
+        _toNullableString(configJson?[_kConfigProjectPrefixKey]);
+    final envProjectPrefix = environmentValue(_kAutoPublishProjectPrefixEnvKey);
+    final projectId = _resolveProjectId(
+      explicitProjectId: configProjectId ?? envProjectId,
+      projectPrefix: configProjectPrefix ?? envProjectPrefix,
+    );
 
     return _AllureAutoPublishSettings(
       enabled: enabled,
@@ -893,6 +902,61 @@ class ManagerAllureReportService {
     final trimmed = value.trim();
     if (trimmed.isEmpty) return null;
     return trimmed;
+  }
+
+  String _resolveProjectId({
+    required String? explicitProjectId,
+    required String? projectPrefix,
+  }) {
+    if (explicitProjectId != null && explicitProjectId.trim().isNotEmpty) {
+      return _normalizeProjectId(explicitProjectId);
+    }
+
+    final cwdName = _lastPathSegment(Directory.current.path);
+    final prefix = projectPrefix?.trim();
+    final raw = [
+      if (prefix != null && prefix.isNotEmpty) prefix,
+      cwdName.isEmpty ? 'project' : cwdName,
+      Platform.operatingSystem,
+    ].join('-');
+    final normalized = _normalizeProjectId(raw);
+    if (normalized.isEmpty) return _kDefaultProjectId;
+    return normalized;
+  }
+
+  String _lastPathSegment(String path) {
+    final normalized = path.replaceAll('\\', '/');
+    final parts = normalized.split('/').where((e) => e.trim().isNotEmpty);
+    if (parts.isEmpty) return '';
+    return parts.last;
+  }
+
+  String _normalizeProjectId(String raw) {
+    final lower = raw.toLowerCase();
+    final buffer = StringBuffer();
+    var prevDash = false;
+    for (final code in lower.codeUnits) {
+      final isAlphaNum = (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
+      final isAllowedPunct = code == 45 || code == 95 || code == 46;
+      if (isAlphaNum || isAllowedPunct) {
+        buffer.writeCharCode(code);
+        prevDash = false;
+      } else {
+        if (!prevDash) {
+          buffer.write('-');
+          prevDash = true;
+        }
+      }
+    }
+    var normalized = buffer.toString();
+    normalized = normalized.replaceAll(RegExp('^-+'), '');
+    normalized = normalized.replaceAll(RegExp('-+\$'), '');
+    normalized = normalized.replaceAll(RegExp('-{2,}'), '-');
+    if (normalized.length > 120) {
+      normalized = normalized.substring(0, 120);
+      normalized = normalized.replaceAll(RegExp('-+\$'), '');
+    }
+    return normalized;
   }
 
   void _resetState() {
