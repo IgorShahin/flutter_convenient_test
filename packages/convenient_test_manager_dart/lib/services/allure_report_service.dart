@@ -968,7 +968,12 @@ class ManagerAllureReportService {
     required String projectId,
     required String sourceDirPath,
   }) async {
-    final uri = _buildApiUri(apiBaseUrl, '/send-results', projectId: projectId);
+    final uri = _buildApiUri(apiBaseUrl, '/send-results', projectId: projectId)
+        .replace(queryParameters: {
+      ..._buildApiUri(apiBaseUrl, '/send-results', projectId: projectId)
+          .queryParameters,
+      'force_project_creation': 'true',
+    });
     final boundary =
         '----ct-boundary-${DateTime.now().toUtc().microsecondsSinceEpoch}-${_random.nextInt(1 << 32)}';
     final rootPath = sourceDirPath.endsWith(Platform.pathSeparator)
@@ -1015,7 +1020,12 @@ class ManagerAllureReportService {
     required String projectId,
     required String sourceDirPath,
   }) async {
-    final uri = _buildApiUri(apiBaseUrl, '/send-results', projectId: projectId);
+    final uri = _buildApiUri(apiBaseUrl, '/send-results', projectId: projectId)
+        .replace(queryParameters: {
+      ..._buildApiUri(apiBaseUrl, '/send-results', projectId: projectId)
+          .queryParameters,
+      'force_project_creation': 'true',
+    });
     final rootPath = sourceDirPath.endsWith(Platform.pathSeparator)
         ? sourceDirPath
         : '$sourceDirPath${Platform.pathSeparator}';
@@ -1258,7 +1268,7 @@ class ManagerAllureReportService {
     for (final code in lower.codeUnits) {
       final isAlphaNum =
           (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
-      final isAllowedPunct = code == 45 || code == 95 || code == 46;
+      final isAllowedPunct = code == 45;
       if (isAlphaNum || isAllowedPunct) {
         buffer.writeCharCode(code);
         prevDash = false;
