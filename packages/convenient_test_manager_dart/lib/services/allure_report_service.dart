@@ -15,15 +15,16 @@ class ManagerAllureReportService {
   static const _kVideoChunkSnapshotPrefix = '__ct_video_chunk__';
   static const _kAutoPublishEnabledEnvKey =
       'CONVENIENT_TEST_ALLURE_DOCKER_AUTO_PUBLISH';
-  static const _kAutoPublishResultsDirEnvKey =
-      'CONVENIENT_TEST_ALLURE_DOCKER_RESULTS_DIR';
   static const _kAutoPublishApiBaseUrlEnvKey =
       'CONVENIENT_TEST_ALLURE_DOCKER_API_BASE_URL';
+  static const _kAutoPublishProjectIdEnvKey =
+      'CONVENIENT_TEST_ALLURE_DOCKER_PROJECT_ID';
   static const _kDefaultDockerApiBaseUrl =
       'http://localhost:5050/allure-docker-service';
+  static const _kDefaultProjectId = 'default';
   static const _kConfigEnableKey = 'enableAllureDockerAutoPublish';
-  static const _kConfigResultsDirKey = 'allureDockerResultsDir';
   static const _kConfigApiBaseUrlKey = 'allureDockerApiBaseUrl';
+  static const _kConfigProjectIdKey = 'allureDockerProjectId';
 
   Future<void> save(ReportCollection request) async {
     if (!supportsIoPlatform) return;
@@ -49,9 +50,13 @@ class ManagerAllureReportService {
     }
 
     final settings = await _resolveAutoPublishSettings();
-    final apiBase = settings.apiBaseUrl;
+    final latestReportUri = _buildApiUri(
+      settings.apiBaseUrl,
+      '/latest-report',
+      projectId: settings.projectId,
+    );
 
-    final reportUrl = '$apiBase/latest-report';
+    final reportUrl = latestReportUri.toString();
     final started = await _openUrlDetached(reportUrl);
     if (!started) return;
     Log.i(_kTag, 'remote allure report opened url=$reportUrl');
@@ -62,21 +67,6 @@ class ManagerAllureReportService {
 
     final settings = await _resolveAutoPublishSettings();
     if (!settings.enabled) return;
-
-    final targetResultsDirPath = settings.resultsDirPath;
-    if (targetResultsDirPath == null || targetResultsDirPath.trim().isEmpty) {
-      Log.w(
-        _kTag,
-        'auto-publish enabled but target results dir is empty. '
-        'Set $_kConfigResultsDirKey in convenient_test.json or '
-        '$_kAutoPublishResultsDirEnvKey env',
-      );
-      return;
-    }
-    final targetResultsDir = targetResultsDirPath.endsWith('/') ||
-            targetResultsDirPath.endsWith('\\')
-        ? targetResultsDirPath
-        : '$targetResultsDirPath${Platform.pathSeparator}';
 
     final superRunId =
         GetIt.I.get<WorkerSuperRunStore>().currSuperRunController.superRunId;
@@ -98,18 +88,42 @@ class ManagerAllureReportService {
         return;
       }
 
-      await _replaceDirectoryContents(
-        sourceDirPath: sourceResultsDir,
-        targetDirPath: targetResultsDir,
+      final cleanUri = _buildApiUri(
+        settings.apiBaseUrl,
+        '/clean-results',
+        projectId: settings.projectId,
       );
+      final cleanStatus = await _httpGetStatus(cleanUri.toString());
+      if (cleanStatus < 200 || cleanStatus >= 300) {
+        Log.w(
+          _kTag,
+          'auto-publish clean-results returned status=$cleanStatus uri=$cleanUri',
+        );
+      }
 
-      final apiBase = settings.apiBaseUrl;
+      final sendStatus = await _sendResultsToAllureDocker(
+        sourceDirPath: sourceResultsDir,
+        apiBaseUrl: settings.apiBaseUrl,
+        projectId: settings.projectId,
+      );
+      if (sendStatus < 200 || sendStatus >= 300) {
+        Log.w(
+          _kTag,
+          'auto-publish send-results returned status=$sendStatus',
+        );
+        return;
+      }
 
-      final responseCode = await _httpGetStatus('$apiBase/generate-report');
+      final generateUri = _buildApiUri(
+        settings.apiBaseUrl,
+        '/generate-report',
+        projectId: settings.projectId,
+      );
+      final responseCode = await _httpGetStatus(generateUri.toString());
       if (responseCode < 200 || responseCode >= 300) {
         Log.w(
           _kTag,
-          'auto-publish generate-report returned status=$responseCode url=$apiBase/generate-report',
+          'auto-publish generate-report returned status=$responseCode uri=$generateUri',
         );
         return;
       }
@@ -118,8 +132,9 @@ class ManagerAllureReportService {
       Log.i(
         _kTag,
         'auto-publish success superRunId=$superRunId '
-        'reportUrl=$apiBase/latest-report '
-        'source=$sourceResultsDir target=$targetResultsDir',
+        'projectId=${settings.projectId} '
+        'reportUrl=${_buildApiUri(settings.apiBaseUrl, '/latest-report', projectId: settings.projectId)} '
+        'source=$sourceResultsDir',
       );
     } catch (e, s) {
       Log.w(_kTag, 'auto-publish failed e=$e s=$s');
@@ -648,77 +663,71 @@ class ManagerAllureReportService {
     _resetState();
   }
 
-  Future<void> _copyDirectory(Directory source, Directory target) async {
-    await target.create(recursive: true);
-    await for (final entity in source.list(recursive: true)) {
-      final relativePath = entity.path.substring(source.path.length);
-      final targetPath = '${target.path}$relativePath';
-      if (entity is Directory) {
-        await Directory(targetPath).create(recursive: true);
-      } else if (entity is File) {
-        final parentDir = Directory(targetPath).parent;
-        if (!parentDir.existsSync()) {
-          await parentDir.create(recursive: true);
-        }
-        await entity.copy(targetPath);
-      }
-    }
-  }
-
-  Future<void> _replaceDirectoryContents({
-    required String sourceDirPath,
-    required String targetDirPath,
-  }) async {
-    final source = Directory(sourceDirPath);
-    final target = Directory(targetDirPath);
-    if (!source.existsSync()) return;
-    await target.create(recursive: true);
-    final preservedHistory = await _snapshotDirectoryIfExists(
-      Directory('${target.path}${Platform.pathSeparator}history'),
+  Uri _buildApiUri(
+    String apiBaseUrl,
+    String path, {
+    required String projectId,
+  }) {
+    final baseUri = Uri.parse(apiBaseUrl);
+    final normalizedPath =
+        '${baseUri.path.endsWith('/') ? baseUri.path.substring(0, baseUri.path.length - 1) : baseUri.path}$path';
+    return baseUri.replace(
+      path: normalizedPath,
+      queryParameters: {
+        ...baseUri.queryParameters,
+        'project_id': projectId,
+      },
     );
-    await _clearDirectoryContents(target);
-    await _copyDirectory(source, target);
-    if (preservedHistory != null) {
-      final historyDir = Directory('${target.path}${Platform.pathSeparator}history');
-      await historyDir.create(recursive: true);
-      await _restoreDirectorySnapshot(
-        files: preservedHistory,
-        targetDir: historyDir,
-      );
-    }
   }
 
-  Future<Map<String, List<int>>?> _snapshotDirectoryIfExists(
-    Directory directory,
-  ) async {
-    if (!directory.existsSync()) return null;
-    final snapshot = <String, List<int>>{};
-    final rootPath = directory.path;
-    await for (final entity in directory.list(recursive: true, followLinks: false)) {
-      if (entity is! File) continue;
-      final relativePath = entity.path.substring(rootPath.length + 1);
-      snapshot[relativePath] = await entity.readAsBytes();
-    }
-    return snapshot;
-  }
-
-  Future<void> _restoreDirectorySnapshot({
-    required Map<String, List<int>> files,
-    required Directory targetDir,
+  Future<int> _sendResultsToAllureDocker({
+    required String sourceDirPath,
+    required String apiBaseUrl,
+    required String projectId,
   }) async {
-    for (final entry in files.entries) {
-      final file = File('${targetDir.path}${Platform.pathSeparator}${entry.key}');
-      await file.parent.create(recursive: true);
-      await file.writeAsBytes(entry.value, flush: true);
+    final sourceDir = Directory(sourceDirPath);
+    if (!sourceDir.existsSync()) return 0;
+
+    final files = sourceDir
+        .listSync(recursive: true, followLinks: false)
+        .whereType<File>()
+        .toList();
+    if (files.isEmpty) return 0;
+
+    final uri = _buildApiUri(apiBaseUrl, '/send-results', projectId: projectId);
+    final boundary =
+        '----ct-boundary-${DateTime.now().toUtc().microsecondsSinceEpoch}-${_random.nextInt(1 << 32)}';
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    try {
+      final req = await client.postUrl(uri);
+      req.headers.contentType = ContentType('multipart', 'form-data',
+          parameters: {'boundary': boundary});
+
+      for (final file in files) {
+        final fileName = file.uri.pathSegments.isEmpty
+            ? file.path
+            : file.uri.pathSegments.last;
+        req.add(utf8.encode('--$boundary\r\n'));
+        req.add(utf8.encode(
+          'Content-Disposition: form-data; name="files[]"; filename="${_escapeHeaderValue(fileName)}"\r\n',
+        ));
+        req.add(utf8.encode('Content-Type: application/octet-stream\r\n\r\n'));
+        await req.addStream(file.openRead());
+        req.add(utf8.encode('\r\n'));
+      }
+      req.add(utf8.encode('--$boundary--\r\n'));
+
+      final resp = await req.close().timeout(const Duration(minutes: 2));
+      await resp.drain<void>();
+      return resp.statusCode;
+    } finally {
+      client.close(force: true);
     }
   }
 
-  Future<void> _clearDirectoryContents(Directory directory) async {
-    if (!directory.existsSync()) return;
-    await for (final entity in directory.list(followLinks: false)) {
-      await entity.delete(recursive: true);
-    }
-  }
+  String _escapeHeaderValue(String value) =>
+      value.replaceAll('\\', r'\\').replaceAll('"', r'\"');
 
   Future<int> _httpGetStatus(String url) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
@@ -748,10 +757,6 @@ class ManagerAllureReportService {
     final envEnabled = _autoPublishEnabled();
     final enabled = configEnabled ?? envEnabled;
 
-    final configResultsDir =
-        _toNullableString(configJson?[_kConfigResultsDirKey]);
-    final envResultsDir = environmentValue(_kAutoPublishResultsDirEnvKey);
-
     final configApiBaseUrl =
         _toNullableString(configJson?[_kConfigApiBaseUrlKey]);
     final envApiBaseUrl = environmentValue(_kAutoPublishApiBaseUrlEnvKey);
@@ -761,10 +766,14 @@ class ManagerAllureReportService {
       return raw;
     })();
 
+    final configProjectId = _toNullableString(configJson?[_kConfigProjectIdKey]);
+    final envProjectId = environmentValue(_kAutoPublishProjectIdEnvKey);
+    final projectId = configProjectId ?? envProjectId ?? _kDefaultProjectId;
+
     return _AllureAutoPublishSettings(
       enabled: enabled,
-      resultsDirPath: configResultsDir ?? envResultsDir,
       apiBaseUrl: apiBaseUrl,
+      projectId: projectId,
     );
   }
 
@@ -880,13 +889,13 @@ class ManagerAllureReportService {
 
 class _AllureAutoPublishSettings {
   final bool enabled;
-  final String? resultsDirPath;
   final String apiBaseUrl;
+  final String projectId;
 
   const _AllureAutoPublishSettings({
     required this.enabled,
-    required this.resultsDirPath,
     required this.apiBaseUrl,
+    required this.projectId,
   });
 }
 
