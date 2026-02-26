@@ -131,12 +131,17 @@ class ManagerAllureReportService {
         return;
       }
 
+      final latestReportUri = _buildApiUri(
+        settings.apiBaseUrl,
+        '/latest-report',
+        projectId: settings.projectId,
+      );
       _lastAutoPublishedSuperRunId = superRunId;
       Log.i(
         _kTag,
         'auto-publish success superRunId=$superRunId '
         'projectId=${settings.projectId} '
-        'reportUrl=${_buildApiUri(settings.apiBaseUrl, '/latest-report', projectId: settings.projectId)} '
+        'reportUrl=$latestReportUri '
         'source=$sourceResultsDir',
       );
     } catch (e, s) {
@@ -195,15 +200,19 @@ class ManagerAllureReportService {
 
     final runtime = _ensureActiveRuntime(request.testName);
     _runtimeUuidByLogEntryId[logEntryId] = runtime.uuid;
-    _lastStepIndexByLogEntryId.remove(logEntryId);
+    _lastStepPointerByLogEntryId.remove(logEntryId);
 
     for (final sub in request.subEntries) {
       final subMs = _usToMs(sub.time.toInt());
       runtime.touchAt(subMs);
 
-      final stepIndex = runtime.steps.length;
-      runtime.steps.add(_buildStep(sub, subMs));
-      _lastStepIndexByLogEntryId[logEntryId] = stepIndex;
+      final step = _buildStep(sub, subMs);
+      final routing = _hookRoutingFromLogSubEntry(sub);
+      _lastStepPointerByLogEntryId[logEntryId] = _appendStepByRouting(
+        runtime: runtime,
+        routing: routing,
+        step: step,
+      );
       runtime.logBuffer.writeln(_formatRawLogLine(sub, subMs));
     }
 
@@ -293,14 +302,20 @@ class ManagerAllureReportService {
     final runtime = _runtimeByLogEntryId(logEntryId) ??
         _activeRuntimeByTestName[testName] ??
         _ensureActiveRuntime(testName);
-    final stepIndex = _lastStepIndexByLogEntryId[logEntryId];
-    if (stepIndex == null || runtime.finished) {
+    final stepPointer = _lastStepPointerByLogEntryId[logEntryId];
+    if (stepPointer == null || runtime.finished) {
       _attachSnapshotToRuntime(
           runtime, request.name, request.image as Uint8List);
     } else {
+      final steps = _stepsForPointer(runtime, stepPointer);
+      if (steps == null) {
+        _attachSnapshotToRuntime(
+            runtime, request.name, request.image as Uint8List);
+        return;
+      }
       _attachSnapshotToStep(
-        steps: runtime.steps,
-        stepIndex: stepIndex,
+        steps: steps,
+        stepIndex: stepPointer.index,
         snapshotName: request.name,
         bytes: request.image as Uint8List,
       );
@@ -319,6 +334,24 @@ class ManagerAllureReportService {
     File(path).writeAsBytesSync(bytes, flush: true);
 
     runtime.attachments.add({
+      'name': snapshotName.isEmpty ? 'snapshot' : snapshotName,
+      'source': source,
+      'type': _mimeTypeForExtension(extension),
+    });
+  }
+
+  void _attachSnapshotToFixture({
+    required _AllureFixtureRuntime fixture,
+    required String snapshotName,
+    required Uint8List bytes,
+  }) {
+    if (_resultsDirPath == null) return;
+    final extension = _detectImageExtension(bytes);
+    final source = _nextArtifactName('attachment', extension);
+    final path = '$_resultsDirPath$source';
+    File(path).writeAsBytesSync(bytes, flush: true);
+
+    fixture.attachments.add({
       'name': snapshotName.isEmpty ? 'snapshot' : snapshotName,
       'source': source,
       'type': _mimeTypeForExtension(extension),
@@ -399,6 +432,7 @@ class ManagerAllureReportService {
     final resultFileName = '${runtime.uuid}-result.json';
     final resultPath = '$_resultsDirPath$resultFileName';
     File(resultPath).writeAsStringSync(jsonEncode(result), flush: true);
+    await _writeContainer(runtime);
 
     final active = _activeRuntimeByTestName[runtime.testName];
     if (identical(active, runtime)) {
@@ -524,14 +558,19 @@ class ManagerAllureReportService {
     final runtime = _runtimeByLogEntryId(logEntryId) ??
         _activeRuntimeByTestName[testName] ??
         _ensureActiveRuntime(testName);
-    final stepIndex = _lastStepIndexByLogEntryId[logEntryId];
+    final stepPointer = _lastStepPointerByLogEntryId[logEntryId];
     for (final pending in pendingSnapshots) {
-      if (stepIndex == null || runtime.finished) {
+      if (stepPointer == null || runtime.finished) {
         _attachSnapshotToRuntime(runtime, pending.name, pending.image);
       } else {
+        final steps = _stepsForPointer(runtime, stepPointer);
+        if (steps == null) {
+          _attachSnapshotToRuntime(runtime, pending.name, pending.image);
+          continue;
+        }
         _attachSnapshotToStep(
-          steps: runtime.steps,
-          stepIndex: stepIndex,
+          steps: steps,
+          stepIndex: stepPointer.index,
           snapshotName: pending.name,
           bytes: pending.image,
         );
@@ -546,17 +585,96 @@ class ManagerAllureReportService {
         _deferredSetUpAllLogBuffer.isNotEmpty;
     if (!hasDeferredData) return;
 
-    runtime.steps.insertAll(0, _deferredSetUpAllSteps);
+    final beforeFixture = runtime.ensureBeforeFixture('SETUP_ALL');
+    beforeFixture.steps.addAll(_deferredSetUpAllSteps);
+    if (_deferredSetUpAllSteps.isNotEmpty) {
+      final start =
+          (_deferredSetUpAllSteps.first['start'] as int?) ?? runtime.startMs;
+      final stop =
+          (_deferredSetUpAllSteps.last['stop'] as int?) ?? runtime.startMs;
+      beforeFixture.touchRange(start: start, stop: stop);
+    }
     if (_deferredSetUpAllLogBuffer.isNotEmpty) {
-      runtime.logBuffer.writeln('--- setUpAll ---');
+      runtime.logBuffer.writeln('--- SETUP_ALL ---');
       runtime.logBuffer.write(_deferredSetUpAllLogBuffer.toString());
-      runtime.logBuffer.writeln('--- /setUpAll ---');
+      runtime.logBuffer.writeln('--- /SETUP_ALL ---');
     }
     for (final attachment in _deferredSetUpAllAttachments) {
-      _attachSnapshotToRuntime(
-          runtime, 'setUpAll:${attachment.name}', attachment.image);
+      _attachSnapshotToFixture(
+        fixture: beforeFixture,
+        snapshotName: 'SETUP_ALL:${attachment.name}',
+        bytes: attachment.image,
+      );
     }
     _deferredSetUpAllInjected = true;
+  }
+
+  _AllureHookRouting _hookRoutingFromLogSubEntry(LogSubEntry sub) {
+    final haystack = '${sub.title} ${sub.message}'.toUpperCase();
+    if (haystack.contains('TEARDOWN_ALL')) {
+      return const _AllureHookRouting.after('TEARDOWN_ALL');
+    }
+    if (haystack.contains('TEARDOWN')) {
+      return const _AllureHookRouting.after('TEARDOWN');
+    }
+    if (haystack.contains('SETUP_ALL')) {
+      return const _AllureHookRouting.before('SETUP_ALL');
+    }
+    if (haystack.contains('SETUP')) {
+      return const _AllureHookRouting.before('SETUP');
+    }
+    return const _AllureHookRouting.body();
+  }
+
+  _AllureStepPointer _appendStepByRouting({
+    required _AllureTestRuntime runtime,
+    required _AllureHookRouting routing,
+    required Map<String, dynamic> step,
+  }) {
+    switch (routing.section) {
+      case _AllureHookSection.before:
+        final fixtureName = routing.fixtureName ?? 'SETUP';
+        final fixture = runtime.ensureBeforeFixture(fixtureName);
+        final index = fixture.steps.length;
+        fixture.steps.add(step);
+        fixture.absorbStep(step);
+        return _AllureStepPointer.before(
+          fixtureName: fixtureName,
+          index: index,
+        );
+      case _AllureHookSection.after:
+        final fixtureName = routing.fixtureName ?? 'TEARDOWN';
+        final fixture = runtime.ensureAfterFixture(fixtureName);
+        final index = fixture.steps.length;
+        fixture.steps.add(step);
+        fixture.absorbStep(step);
+        return _AllureStepPointer.after(
+          fixtureName: fixtureName,
+          index: index,
+        );
+      case _AllureHookSection.body:
+        final index = runtime.steps.length;
+        runtime.steps.add(step);
+        return _AllureStepPointer.body(index: index);
+    }
+  }
+
+  List<Map<String, dynamic>>? _stepsForPointer(
+    _AllureTestRuntime runtime,
+    _AllureStepPointer pointer,
+  ) {
+    switch (pointer.section) {
+      case _AllureHookSection.body:
+        return runtime.steps;
+      case _AllureHookSection.before:
+        final fixtureName = pointer.fixtureName;
+        if (fixtureName == null) return null;
+        return runtime.beforeFixtures[fixtureName]?.steps;
+      case _AllureHookSection.after:
+        final fixtureName = pointer.fixtureName;
+        if (fixtureName == null) return null;
+        return runtime.afterFixtures[fixtureName]?.steps;
+    }
   }
 
   String _formatStepName(LogSubEntry sub) {
@@ -664,6 +782,27 @@ class ManagerAllureReportService {
     await resultsDir.create(recursive: true);
 
     _resetState();
+  }
+
+  Future<void> _writeContainer(_AllureTestRuntime runtime) async {
+    if (_resultsDirPath == null) return;
+    final befores =
+        runtime.beforeFixtures.values.map((e) => e.toJson()).toList();
+    final afters = runtime.afterFixtures.values.map((e) => e.toJson()).toList();
+    if (befores.isEmpty && afters.isEmpty) return;
+
+    final containerUuid = _nextUuid();
+    final container = <String, dynamic>{
+      'uuid': containerUuid,
+      'name': runtime.fullName,
+      'children': [runtime.uuid],
+      'befores': befores,
+      'afters': afters,
+      'start': runtime.startMs,
+      'stop': runtime.stopMs,
+    };
+    final containerPath = '$_resultsDirPath$containerUuid-container.json';
+    File(containerPath).writeAsStringSync(jsonEncode(container), flush: true);
   }
 
   Uri _buildApiUri(
@@ -965,7 +1104,7 @@ class ManagerAllureReportService {
     _runtimeByUuid.clear();
     _testNameByLogEntryId.clear();
     _runtimeUuidByLogEntryId.clear();
-    _lastStepIndexByLogEntryId.clear();
+    _lastStepPointerByLogEntryId.clear();
     _pendingSnapshotsByLogEntryId.clear();
     _deferredSetUpAllSteps.clear();
     _deferredSetUpAllLastStepIndexByLogEntryId.clear();
@@ -1016,7 +1155,7 @@ class ManagerAllureReportService {
   final _runtimeByUuid = <String, _AllureTestRuntime>{};
   final _testNameByLogEntryId = <int, String>{};
   final _runtimeUuidByLogEntryId = <int, String>{};
-  final _lastStepIndexByLogEntryId = <int, int>{};
+  final _lastStepPointerByLogEntryId = <int, _AllureStepPointer>{};
   final _pendingSnapshotsByLogEntryId = <int, List<_PendingSnapshot>>{};
   final _deferredSetUpAllSteps = <Map<String, dynamic>>[];
   final _deferredSetUpAllLastStepIndexByLogEntryId = <int, int>{};
@@ -1061,6 +1200,8 @@ class _AllureTestRuntime {
   final int attemptIndex;
   final List<Map<String, dynamic>> steps = [];
   final List<Map<String, dynamic>> attachments = [];
+  final Map<String, _AllureFixtureRuntime> beforeFixtures = {};
+  final Map<String, _AllureFixtureRuntime> afterFixtures = {};
   final StringBuffer logBuffer = StringBuffer();
   String? status;
   Map<String, dynamic>? statusDetails;
@@ -1083,4 +1224,95 @@ class _AllureTestRuntime {
     _startMs = _startMs == null ? ms : min(_startMs!, ms);
     _stopMs = _stopMs == null ? ms : max(_stopMs!, ms);
   }
+
+  _AllureFixtureRuntime ensureBeforeFixture(String name) =>
+      beforeFixtures.putIfAbsent(name, () => _AllureFixtureRuntime(name: name));
+
+  _AllureFixtureRuntime ensureAfterFixture(String name) =>
+      afterFixtures.putIfAbsent(name, () => _AllureFixtureRuntime(name: name));
+}
+
+class _AllureFixtureRuntime {
+  final String name;
+  final List<Map<String, dynamic>> steps = [];
+  final List<Map<String, dynamic>> attachments = [];
+  String? _status;
+  int? _startMs;
+  int? _stopMs;
+
+  _AllureFixtureRuntime({required this.name});
+
+  void absorbStep(Map<String, dynamic> step) {
+    final stepStatus = (step['status'] as String?) ?? 'passed';
+    if (stepStatus == 'failed' || stepStatus == 'broken') {
+      _status = 'failed';
+    } else {
+      _status ??= 'passed';
+    }
+
+    final start = step['start'] as int?;
+    final stop = step['stop'] as int?;
+    if (start != null || stop != null) {
+      touchRange(
+        start: start ?? stop ?? _nowMs(),
+        stop: stop ?? start ?? _nowMs(),
+      );
+    }
+  }
+
+  void touchRange({
+    required int start,
+    required int stop,
+  }) {
+    _startMs = _startMs == null ? start : min(_startMs!, start);
+    _stopMs = _stopMs == null ? stop : max(_stopMs!, stop);
+  }
+
+  int _nowMs() => DateTime.now().toUtc().millisecondsSinceEpoch;
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'status': _status ?? 'passed',
+        'stage': 'finished',
+        'start': _startMs ?? _nowMs(),
+        'stop': _stopMs ?? _nowMs(),
+        'steps': steps,
+        'attachments': attachments,
+      };
+}
+
+enum _AllureHookSection { body, before, after }
+
+class _AllureHookRouting {
+  final _AllureHookSection section;
+  final String? fixtureName;
+
+  const _AllureHookRouting.body()
+      : section = _AllureHookSection.body,
+        fixtureName = null;
+  const _AllureHookRouting.before(this.fixtureName)
+      : section = _AllureHookSection.before;
+  const _AllureHookRouting.after(this.fixtureName)
+      : section = _AllureHookSection.after;
+}
+
+class _AllureStepPointer {
+  final _AllureHookSection section;
+  final int index;
+  final String? fixtureName;
+
+  const _AllureStepPointer.body({
+    required this.index,
+  })  : section = _AllureHookSection.body,
+        fixtureName = null;
+
+  const _AllureStepPointer.before({
+    required this.fixtureName,
+    required this.index,
+  }) : section = _AllureHookSection.before;
+
+  const _AllureStepPointer.after({
+    required this.fixtureName,
+    required this.index,
+  }) : section = _AllureHookSection.after;
 }
