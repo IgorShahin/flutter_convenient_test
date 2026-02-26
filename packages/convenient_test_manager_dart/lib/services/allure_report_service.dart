@@ -162,8 +162,8 @@ class ManagerAllureReportService {
   Future<void> _handleItem(ReportItem item) async {
     switch (item.whichSubType()) {
       case ReportItem_SubType.suiteInfoProto:
-        _suiteInfo = SuiteInfo.fromProto(item.suiteInfoProto);
         await _clearAllureResults();
+        _suiteInfo = SuiteInfo.fromProto(item.suiteInfoProto);
         return;
       case ReportItem_SubType.logEntry:
         _handleLogEntry(item.logEntry);
