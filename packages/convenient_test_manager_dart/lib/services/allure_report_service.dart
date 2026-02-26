@@ -627,6 +627,11 @@ class ManagerAllureReportService {
       if (stepName == 'SETUP' && currentBlock.isNotEmpty) {
         blocks.add(currentBlock);
         currentBlock = <Map<String, dynamic>>[];
+        continue;
+      }
+      if (stepName == 'SETUP') {
+        // Skip synthetic setup separator markers in rendered output.
+        continue;
       }
       currentBlock.add(step);
     }
@@ -648,7 +653,7 @@ class ManagerAllureReportService {
           (e['status'] as String?) == 'failed' ||
           (e['status'] as String?) == 'broken');
       wrappers.add({
-        'name': 'SETUP [$groupName]',
+        'name': groupName,
         'status': hasFailed ? 'failed' : 'passed',
         'stage': 'finished',
         'start': start,
