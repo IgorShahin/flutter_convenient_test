@@ -168,13 +168,27 @@ class ReportHandlerService {
       {required bool doClear}) async {
     Log.d(_kTag, 'handleReportSuiteInfo called $request');
 
-    Log.d(_kTag, 'handleReportSuiteInfo thus MiscDartService.clearAll');
-    GetIt.I.get<MiscDartService>().clearAll();
+    final superRunId =
+        GetIt.I.get<WorkerSuperRunStore>().currSuperRunController.superRunId;
+    final suiteInfoDigest = sha256.convert(request.writeToBuffer()).toString();
+    final shouldReset =
+        _lastSuiteInfoDigestBySuperRunId[superRunId] != suiteInfoDigest;
+    _lastSuiteInfoDigestBySuperRunId[superRunId] = suiteInfoDigest;
 
-    // in case data from previous super-run are logged into current run
-    if (doClear) {
-      Log.d(_kTag, 'handleReportSuiteInfo thus ReportSaverService.clear');
-      await GetIt.I.get<ManagerReportSaverService>().clear();
+    if (shouldReset) {
+      Log.d(_kTag, 'handleReportSuiteInfo thus MiscDartService.clearAll');
+      GetIt.I.get<MiscDartService>().clearAll();
+
+      // in case data from previous super-run are logged into current run
+      if (doClear) {
+        Log.d(_kTag, 'handleReportSuiteInfo thus ReportSaverService.clear');
+        await GetIt.I.get<ManagerReportSaverService>().clear();
+      }
+    } else {
+      Log.i(
+        _kTag,
+        'suiteInfo deduplicated for superRunId=$superRunId, skip destructive clear',
+      );
     }
 
     Log.d(_kTag, 'handleReportSuiteInfo set new suitInfo');
@@ -413,6 +427,7 @@ class ReportHandlerService {
   final _logStore = GetIt.I.get<LogStore>();
   final _suiteInfoStore = GetIt.I.get<SuiteInfoStore>();
   final _rawLogStore = GetIt.I.get<RawLogStore>();
+  final _lastSuiteInfoDigestBySuperRunId = <String, String>{};
   final _incomingVideoChunkMap = <String, _IncomingVideoChunkState>{};
   final _failedIncomingVideoSessionIds = <String>{};
   DateTime? _currentRunSuiteInfoReceivedAt;

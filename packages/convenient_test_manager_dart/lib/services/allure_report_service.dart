@@ -8,6 +8,7 @@ import 'package:convenient_test_common_dart/convenient_test_common_dart.dart';
 import 'package:convenient_test_manager_dart/misc/runtime_platform.dart';
 import 'package:convenient_test_manager_dart/services/fs_service.dart';
 import 'package:convenient_test_manager_dart/stores/worker_super_run_store.dart';
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:get_it/get_it.dart';
 
 class ManagerAllureReportService {
@@ -151,7 +152,21 @@ class ManagerAllureReportService {
   Future<void> _handleItem(ReportItem item) async {
     switch (item.whichSubType()) {
       case ReportItem_SubType.suiteInfoProto:
-        await _clearAllureResults();
+        final suiteInfoDigest =
+            crypto.sha1.convert(item.suiteInfoProto.writeToBuffer()).toString();
+        final superRunId =
+            GetIt.I.get<WorkerSuperRunStore>().currSuperRunController.superRunId;
+        final shouldReset = _lastSuiteInfoDigestBySuperRunId[superRunId] !=
+            suiteInfoDigest;
+        _lastSuiteInfoDigestBySuperRunId[superRunId] = suiteInfoDigest;
+        if (shouldReset) {
+          await _clearAllureResults();
+        } else {
+          Log.i(
+            _kTag,
+            'suiteInfo deduplicated for superRunId=$superRunId, skip allure reset',
+          );
+        }
         _suiteInfo = SuiteInfo.fromProto(item.suiteInfoProto);
         return;
       case ReportItem_SubType.logEntry:
@@ -1422,6 +1437,7 @@ class ManagerAllureReportService {
   bool _autoPublishInProgress = false;
   int _artifactCounter = 0;
   int _uuidCounter = 0;
+  final _lastSuiteInfoDigestBySuperRunId = <String, String>{};
 }
 
 class _AllureAutoPublishSettings {
