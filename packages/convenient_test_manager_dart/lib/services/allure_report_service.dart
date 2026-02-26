@@ -58,7 +58,7 @@ class ManagerAllureReportService {
       return;
     }
 
-    await autoPublishToDockerIfConfigured();
+    await autoPublishToDockerIfConfigured(force: true);
 
     final settings = await _resolveAutoPublishSettings();
     final latestReportUri = _buildApiUri(
@@ -73,7 +73,7 @@ class ManagerAllureReportService {
     Log.i(_kTag, 'remote allure report opened url=$reportUrl');
   }
 
-  Future<void> autoPublishToDockerIfConfigured() async {
+  Future<void> autoPublishToDockerIfConfigured({bool force = false}) async {
     if (!supportsIoPlatform) return;
 
     final settings = await _resolveAutoPublishSettings();
@@ -81,8 +81,10 @@ class ManagerAllureReportService {
 
     final superRunId =
         GetIt.I.get<WorkerSuperRunStore>().currSuperRunController.superRunId;
+    if (!force && _lastAutoPublishAttemptedSuperRunId == superRunId) return;
     if (_lastAutoPublishedSuperRunId == superRunId) return;
     if (_autoPublishInProgress) return;
+    _lastAutoPublishAttemptedSuperRunId = superRunId;
 
     _autoPublishInProgress = true;
     try {
@@ -97,19 +99,6 @@ class ManagerAllureReportService {
       if (!hasResults) {
         Log.i(_kTag, 'auto-publish skip: no non-service allure result files');
         return;
-      }
-
-      final cleanUri = _buildApiUri(
-        settings.apiBaseUrl,
-        '/clean-results',
-        projectId: settings.projectId,
-      );
-      final cleanStatus = await _httpGetStatus(cleanUri.toString());
-      if (cleanStatus < 200 || cleanStatus >= 300) {
-        Log.w(
-          _kTag,
-          'auto-publish clean-results returned status=$cleanStatus uri=$cleanUri',
-        );
       }
 
       final sendStatus = await _sendResultsToAllureDocker(
@@ -410,6 +399,13 @@ class ManagerAllureReportService {
       });
     }
 
+    final suiteGroupNames = _suiteGroupNamesForTest(runtime.testName);
+    _decorateSetupFixtureByGroups(
+      runtime: runtime,
+      suiteGroupNames: suiteGroupNames,
+    );
+    final displayName = _displayNameForTest(runtime.testName);
+
     final labels = <Map<String, String>>[
       {'name': 'framework', 'value': 'convenient_test'},
       {'name': 'language', 'value': 'dart'},
@@ -420,7 +416,7 @@ class ManagerAllureReportService {
     final result = <String, dynamic>{
       'uuid': runtime.uuid,
       'historyId': runtime.historyId,
-      'name': runtime.testName,
+      'name': displayName,
       'fullName': runtime.fullName,
       'status': runtime.status ?? 'unknown',
       'stage': 'finished',
@@ -452,21 +448,7 @@ class ManagerAllureReportService {
   }
 
   List<Map<String, String>> _suiteLabelsForTest(String testName) {
-    final suiteInfo = _suiteInfo;
-    if (suiteInfo == null) return const [];
-    final entryId = _resolveSuiteEntryIdForTestName(suiteInfo, testName);
-    if (entryId == null) return const [];
-
-    final groupNames = <String>[];
-    var currentId = suiteInfo.entryMap[entryId]?.parentId ?? -1;
-    while (suiteInfo.isIdValid(currentId)) {
-      final entry = suiteInfo.entryMap[currentId];
-      if (entry is GroupInfo && entry.name.trim().isNotEmpty) {
-        groupNames.add(entry.name.trim());
-      }
-      currentId = entry?.parentId ?? -1;
-    }
-    final normalized = groupNames.reversed.toList();
+    final normalized = _suiteGroupNamesForTest(testName);
     if (normalized.isEmpty) return const [];
 
     final labels = <Map<String, String>>[];
@@ -508,6 +490,85 @@ class ManagerAllureReportService {
     }
 
     return labels;
+  }
+
+  List<String> _suiteGroupNamesForTest(String testName) {
+    final suiteInfo = _suiteInfo;
+    if (suiteInfo == null) return const [];
+    final entryId = _resolveSuiteEntryIdForTestName(suiteInfo, testName);
+    if (entryId == null) return const [];
+
+    final groupNames = <String>[];
+    var currentId = suiteInfo.entryMap[entryId]?.parentId ?? -1;
+    while (suiteInfo.isIdValid(currentId)) {
+      final entry = suiteInfo.entryMap[currentId];
+      if (entry is GroupInfo && entry.name.trim().isNotEmpty) {
+        groupNames.add(entry.name.trim());
+      }
+      currentId = entry?.parentId ?? -1;
+    }
+    return groupNames.reversed.toList();
+  }
+
+  String _displayNameForTest(String testName) {
+    final suiteInfo = _suiteInfo;
+    if (suiteInfo == null) return testName;
+    final entryId = _resolveSuiteEntryIdForTestName(suiteInfo, testName);
+    if (entryId == null) return testName;
+    final entry = suiteInfo.entryMap[entryId];
+    if (entry is TestInfo && entry.name.trim().isNotEmpty) {
+      return entry.name.trim();
+    }
+    return testName;
+  }
+
+  void _decorateSetupFixtureByGroups({
+    required _AllureTestRuntime runtime,
+    required List<String> suiteGroupNames,
+  }) {
+    final setupFixture = runtime.beforeFixtures['SETUP'];
+    if (setupFixture == null) return;
+    if (setupFixture.steps.length <= 1) return;
+
+    final blocks = <List<Map<String, dynamic>>>[];
+    var currentBlock = <Map<String, dynamic>>[];
+    for (final step in setupFixture.steps) {
+      final stepName = (step['name'] as String?)?.trim().toUpperCase() ?? '';
+      if (stepName == 'SETUP' && currentBlock.isNotEmpty) {
+        blocks.add(currentBlock);
+        currentBlock = <Map<String, dynamic>>[];
+      }
+      currentBlock.add(step);
+    }
+    if (currentBlock.isNotEmpty) {
+      blocks.add(currentBlock);
+    }
+    if (blocks.length <= 1) return;
+
+    final wrappers = <Map<String, dynamic>>[];
+    final offset = max(0, suiteGroupNames.length - blocks.length);
+    for (var i = 0; i < blocks.length; i++) {
+      final block = blocks[i];
+      final start = (block.first['start'] as int?) ?? runtime.startMs;
+      final stop = (block.last['stop'] as int?) ?? runtime.stopMs;
+      final groupName = (i + offset < suiteGroupNames.length)
+          ? suiteGroupNames[i + offset]
+          : 'group-${i + 1}';
+      final hasFailed = block.any((e) =>
+          (e['status'] as String?) == 'failed' ||
+          (e['status'] as String?) == 'broken');
+      wrappers.add({
+        'name': 'SETUP [$groupName]',
+        'status': hasFailed ? 'failed' : 'passed',
+        'stage': 'finished',
+        'start': start,
+        'stop': stop,
+        'steps': block,
+      });
+    }
+    setupFixture.steps
+      ..clear()
+      ..addAll(wrappers);
   }
 
   int? _resolveSuiteEntryIdForTestName(SuiteInfo suiteInfo, String testName) {
@@ -1356,6 +1417,7 @@ class ManagerAllureReportService {
   bool _deferredSetUpAllInjected = false;
   SuiteInfo? _suiteInfo;
   String? _resultsDirPath;
+  String? _lastAutoPublishAttemptedSuperRunId;
   String? _lastAutoPublishedSuperRunId;
   bool _autoPublishInProgress = false;
   int _artifactCounter = 0;
@@ -1474,19 +1536,7 @@ class _AllureFixtureRuntime {
       };
 
   List<Map<String, dynamic>> _buildDisplaySteps() {
-    if (steps.length <= 1) return steps;
-
-    final start = (steps.first['start'] as int?) ?? (_startMs ?? _nowMs());
-    final stop = (steps.last['stop'] as int?) ?? (_stopMs ?? _nowMs());
-    final wrapper = <String, dynamic>{
-      'name': '$name GROUP',
-      'status': _status ?? 'passed',
-      'stage': 'finished',
-      'start': start,
-      'stop': stop,
-      'steps': steps,
-    };
-    return [wrapper];
+    return steps;
   }
 }
 
