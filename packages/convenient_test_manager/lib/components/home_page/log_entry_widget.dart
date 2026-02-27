@@ -145,6 +145,11 @@ class HomePageLogEntryWidget extends StatelessWidget {
                 Expanded(
                   child: EnhancedSelectableText(
                     interestLogSubEntry.message,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.25,
+                      fontFamily: 'RobotoMono',
+                    ),
                     enableCopyAllButton: false,
                   ),
                 ),
