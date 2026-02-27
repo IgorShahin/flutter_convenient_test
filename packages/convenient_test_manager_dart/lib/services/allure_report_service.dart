@@ -13,6 +13,7 @@ import 'package:get_it/get_it.dart';
 
 class ManagerAllureReportService {
   static const _kTag = 'ManagerAllureReportService';
+  static const _kGenerateOpenPublishTimeout = Duration(seconds: 20);
   static const _kVideoChunkSnapshotPrefix = '__ct_video_chunk__';
   static const _kAutoPublishEnabledEnvKey = 'CONVENIENT_TEST_ALLURE_DOCKER_AUTO_PUBLISH';
   static const _kAutoPublishApiBaseUrlEnvKey = 'CONVENIENT_TEST_ALLURE_DOCKER_API_BASE_URL';
@@ -52,8 +53,25 @@ class ManagerAllureReportService {
       return;
     }
 
-    await autoPublishToDockerIfConfigured(force: true);
+    await openLatestReportSite();
 
+    unawaited(() async {
+      try {
+        await autoPublishToDockerIfConfigured(force: true)
+            .timeout(_kGenerateOpenPublishTimeout);
+      } on TimeoutException catch (e, s) {
+        Log.w(_kTag, 'open-triggered auto-publish timeout e=$e s=$s');
+      } catch (e, s) {
+        Log.w(_kTag, 'open-triggered auto-publish failed e=$e s=$s');
+      }
+    }());
+  }
+
+  Future<bool> openLatestReportSite() async {
+    if (!supportsIoPlatform) {
+      Log.w(_kTag, 'openLatestReportSite skipped on non-io runtime');
+      return false;
+    }
     final settings = await _resolveAutoPublishSettings();
     final latestReportUri = _buildApiUri(
       settings.apiBaseUrl,
@@ -63,8 +81,9 @@ class ManagerAllureReportService {
 
     final reportUrl = latestReportUri.toString();
     final started = await _openUrlDetached(reportUrl);
-    if (!started) return;
+    if (!started) return false;
     Log.i(_kTag, 'remote allure report opened url=$reportUrl');
+    return true;
   }
 
   Future<void> autoPublishToDockerIfConfigured({bool force = false}) async {

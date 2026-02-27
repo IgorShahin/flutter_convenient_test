@@ -90,9 +90,15 @@ class HomePageHeaderPanel extends StatelessWidget {
                 text: 'Load Report',
               ),
               if (supportsIoPlatform)
-                _HeaderButton(
-                  onPressed: miscFlutterService.openAllureReportSite,
-                  text: 'Open Allure',
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _HeaderButton(
+                      onPressed: miscFlutterService.openAllureReportSite,
+                      text: 'Open Allure',
+                    ),
+                    const _AllurePublishHint(),
+                  ],
                 ),
               _HeaderButton(
                 onPressed: () =>
@@ -232,5 +238,54 @@ class _HeaderButton extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _AllurePublishHint extends StatelessWidget {
+  const _AllurePublishHint();
+
+  @override
+  Widget build(BuildContext context) {
+    final homePageStore = GetIt.I.get<HomePageStore>();
+    return Observer(builder: (_) {
+      final state = homePageStore.allurePublishUiState.value;
+      if (state == AllurePublishUiState.idle) {
+        return const SizedBox.shrink();
+      }
+
+      final (text, color) = switch (state) {
+        AllurePublishUiState.publishing => ('Publishing...', Colors.blue),
+        AllurePublishUiState.published => ('Published', Colors.green),
+        AllurePublishUiState.timeout => ('Publish timeout', Colors.orange),
+        AllurePublishUiState.failed => ('Publish failed', Colors.red),
+        AllurePublishUiState.idle => ('', Colors.transparent),
+      };
+      if (text.isEmpty) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(left: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (state == AllurePublishUiState.publishing)
+              SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: color,
+                ),
+              ),
+            if (state == AllurePublishUiState.publishing)
+              const SizedBox(width: 6),
+            Text(
+              text,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: color,
+                  ),
+            ),
+          ],
+        ),
+      );
+    });
   }
 }

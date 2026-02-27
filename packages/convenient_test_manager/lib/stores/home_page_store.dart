@@ -24,6 +24,8 @@ abstract class _HomePageStore with Store {
 
   final logEntryExpandErrorInfoMap =
       ObservableDefaultMap<int, bool>(createDefaultValue: (_) => false);
+
+  final allurePublishUiState = Observable(AllurePublishUiState.idle);
 }
 
 enum HomePageSecondaryPanelTab {
@@ -31,6 +33,14 @@ enum HomePageSecondaryPanelTab {
   video,
   rawLog,
   none,
+}
+
+enum AllurePublishUiState {
+  idle,
+  publishing,
+  published,
+  timeout,
+  failed,
 }
 
 extension ExtHomePageSecondaryPanelTab on HomePageSecondaryPanelTab {

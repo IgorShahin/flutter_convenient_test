@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:convenient_test_common/convenient_test_common.dart';
@@ -12,6 +13,7 @@ import 'package:get_it/get_it.dart';
 
 class MiscFlutterService extends MiscDartService {
   static const _kTag = 'MiscFlutterService';
+  static const _kOpenAllurePublishTimeout = Duration(seconds: 20);
 
   @override
   void reloadInfo() {
@@ -97,6 +99,22 @@ class MiscFlutterService extends MiscDartService {
   }
 
   Future<void> openAllureReportSite() async {
-    await GetIt.I.get<ManagerAllureReportService>().generateAndOpenSite();
+    final homePageStore = GetIt.I.get<HomePageStore>();
+    final allureService = GetIt.I.get<ManagerAllureReportService>();
+    homePageStore.allurePublishUiState.value = AllurePublishUiState.publishing;
+    try {
+      await allureService
+          .autoPublishToDockerIfConfigured(force: true)
+          .timeout(_kOpenAllurePublishTimeout);
+      homePageStore.allurePublishUiState.value = AllurePublishUiState.published;
+    } on TimeoutException catch (e, s) {
+      homePageStore.allurePublishUiState.value = AllurePublishUiState.timeout;
+      Log.w(_kTag, 'openAllureReportSite publish timeout e=$e s=$s');
+    } catch (e, s) {
+      homePageStore.allurePublishUiState.value = AllurePublishUiState.failed;
+      Log.w(_kTag, 'openAllureReportSite publish failed e=$e s=$s');
+    } finally {
+      await allureService.openLatestReportSite();
+    }
   }
 }
