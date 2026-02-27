@@ -97,6 +97,10 @@ class HomePageHeaderPanel extends StatelessWidget {
                       onPressed: miscFlutterService.openAllureReportSite,
                       text: 'Open Allure',
                     ),
+                    _HeaderButton(
+                      onPressed: miscFlutterService.clearAllureHistory,
+                      text: 'Clear Allure History',
+                    ),
                     const _AllurePublishHint(),
                   ],
                 ),

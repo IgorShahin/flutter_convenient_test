@@ -86,6 +86,76 @@ class ManagerAllureReportService {
     return true;
   }
 
+  Future<bool> clearRemoteHistory({bool clearResults = false}) async {
+    if (!supportsIoPlatform) {
+      Log.w(_kTag, 'clearRemoteHistory skipped on non-io runtime');
+      return false;
+    }
+
+    final settings = await _resolveAutoPublishSettings();
+    final candidateUris = <Uri>[
+      _buildApiUri(
+        settings.apiBaseUrl,
+        '/clean-history',
+        projectId: settings.projectId,
+      ),
+      _buildApiUriWithProjectInPath(
+        settings.apiBaseUrl,
+        settings.projectId,
+        '/clean-history',
+      ),
+      _buildApiUriWithProjectInPath(
+        settings.apiBaseUrl,
+        settings.projectId,
+        '/history/clean',
+      ),
+    ];
+
+    int? successStatus;
+    Uri? successUri;
+    for (final uri in candidateUris) {
+      final status = await _httpGetStatus(uri.toString());
+      if (status >= 200 && status < 300) {
+        successStatus = status;
+        successUri = uri;
+        break;
+      }
+      Log.w(_kTag, 'clearRemoteHistory candidate failed status=$status uri=$uri');
+    }
+
+    if (successUri == null) {
+      Log.w(
+        _kTag,
+        'clearRemoteHistory failed for all endpoints '
+        'projectId=${settings.projectId} apiBaseUrl=${settings.apiBaseUrl}',
+      );
+      return false;
+    }
+
+    if (clearResults) {
+      final cleanResultsUri = _buildApiUri(
+        settings.apiBaseUrl,
+        '/clean-results',
+        projectId: settings.projectId,
+      );
+      final cleanResultsStatus = await _httpGetStatus(cleanResultsUri.toString());
+      if (cleanResultsStatus < 200 || cleanResultsStatus >= 300) {
+        Log.w(
+          _kTag,
+          'clearRemoteHistory clean-results returned status=$cleanResultsStatus '
+          'uri=$cleanResultsUri',
+        );
+      }
+    }
+
+    Log.i(
+      _kTag,
+      'clearRemoteHistory success status=$successStatus '
+      'uri=$successUri projectId=${settings.projectId}',
+    );
+    return true;
+  }
+
   Future<void> autoPublishToDockerIfConfigured({bool force = false}) async {
     if (!supportsIoPlatform) return;
 
@@ -1271,6 +1341,22 @@ class ManagerAllureReportService {
       queryParameters: {
         ...baseUri.queryParameters,
         'project_id': projectId,
+      },
+    );
+  }
+
+  Uri _buildApiUriWithProjectInPath(
+    String apiBaseUrl,
+    String projectId,
+    String subPath,
+  ) {
+    final baseUri = Uri.parse(apiBaseUrl);
+    final basePath =
+        baseUri.path.endsWith('/') ? baseUri.path.substring(0, baseUri.path.length - 1) : baseUri.path;
+    return baseUri.replace(
+      path: '$basePath/projects/$projectId$subPath',
+      queryParameters: {
+        ...baseUri.queryParameters,
       },
     );
   }
