@@ -19,6 +19,8 @@ class HomePageLogEntryWidget extends StatelessWidget {
   final int testEntryId;
   final int logEntryId;
   final bool running;
+  final bool isSetupPhase;
+  final String? setupGroupLabel;
 
   const HomePageLogEntryWidget({
     super.key,
@@ -26,6 +28,8 @@ class HomePageLogEntryWidget extends StatelessWidget {
     required this.testEntryId,
     required this.logEntryId,
     required this.running,
+    this.isSetupPhase = false,
+    this.setupGroupLabel,
   });
 
   @override
@@ -140,6 +144,27 @@ class HomePageLogEntryWidget extends StatelessWidget {
                   ),
                 ),
                 Container(width: 12),
+                if (isSetupPhase && (setupGroupLabel?.isNotEmpty ?? false))
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.secondaryContainer,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        setupGroupLabel!,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSecondaryContainer,
+                        ),
+                      ),
+                    ),
+                  ),
                 _buildTitle(interestLogSubEntry, context),
                 Container(width: 12),
                 Expanded(

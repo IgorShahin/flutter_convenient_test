@@ -301,20 +301,59 @@ class _TestInfoSectionBuilder extends StaticSectionBuilder {
         ),
       );
     } else {
+      final setupEndExclusive = _calcSetupEndExclusive(logEntryIds);
+      final setupGroupLabel = _calcSetupGroupLabel();
       yield StaticSection(
         metadata: TestInfoLogEntrySectionMetadata(
           testInfoId: info.id,
         ),
         count: logEntryIds.length,
-        builder: (_, i) => HomePageLogEntryWidget(
-          order: i,
-          testEntryId: info.id,
-          logEntryId: logEntryIds[i],
-          running: state == SimplifiedStateEnum.running &&
-              i == logEntryIds.length - 1,
-        ),
+        builder: (_, i) {
+          return HomePageLogEntryWidget(
+            order: i,
+            testEntryId: info.id,
+            logEntryId: logEntryIds[i],
+            running:
+                state == SimplifiedStateEnum.running && i == logEntryIds.length - 1,
+            isSetupPhase: i < setupEndExclusive,
+            setupGroupLabel: setupGroupLabel,
+          );
+        },
       );
     }
+  }
+
+  int _calcSetupEndExclusive(List<int> logEntryIds) {
+    final logStore = GetIt.I.get<LogStore>();
+    for (var i = 0; i < logEntryIds.length; i++) {
+      final subEntryIds = logStore.logSubEntryInEntry[logEntryIds[i]];
+      if (subEntryIds == null) continue;
+      final isStart = subEntryIds.any(
+        (id) => logStore.logSubEntryMap[id]?.type == LogSubEntryType.TEST_START,
+      );
+      if (isStart) return i;
+    }
+    return logEntryIds.length;
+  }
+
+  String _calcSetupGroupLabel() {
+    final suiteInfo = GetIt.I.get<SuiteInfoStore>().suiteInfo;
+    if (suiteInfo == null) return 'SETUP';
+
+    final parts = <String>[];
+    var parentId = suiteInfo.entryMap[info.id]?.parentId ?? -1;
+    while (suiteInfo.isIdValid(parentId)) {
+      final entry = suiteInfo.entryMap[parentId];
+      if (entry is GroupInfo) {
+        final name = entry.name.trim();
+        if (name.isNotEmpty) {
+          parts.add(name);
+        }
+      }
+      parentId = entry?.parentId ?? -1;
+    }
+    if (parts.isEmpty) return 'SETUP';
+    return 'SETUP [${parts.reversed.join(' / ')}]';
   }
 
   bool get expanding =>
