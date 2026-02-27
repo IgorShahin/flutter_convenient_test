@@ -4,6 +4,7 @@ import 'package:convenient_test_dev/src/functions/log.dart';
 import 'package:convenient_test_dev/src/functions/widget_tester.dart';
 import 'package:convenient_test_dev/src/support/get_it.dart';
 import 'package:convenient_test_dev/src/support/slot.dart';
+import 'package:convenient_test_dev/src/support/worker_video_recording_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meta/meta.dart';
@@ -26,6 +27,20 @@ void tTestWidgets(
     (tester) async => await ConvenientTest.withActiveInstance(tester, (
       t,
     ) async {
+      await tester.runAsync(() async {
+        try {
+          await myGetIt
+              .get<WorkerVideoRecordingService>()
+              .startRecord()
+              .timeout(const Duration(seconds: 10));
+        } catch (e, s) {
+          Log.w(
+            'TestWidgets',
+            'video start near START marker failed e=$e s=$s',
+          );
+        }
+      });
+
       // Only log START/END for the `tTestWidgets`. Thus, when using `test` or `testWidgets`, i.e. when
       // users setup convenient_test but not use it for that specific test, we do not waste time doing logging
       // https://github.com/fzyzcjy/yplusplus/issues/8554#issuecomment-1530977507

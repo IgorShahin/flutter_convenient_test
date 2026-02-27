@@ -199,6 +199,7 @@ Future<void> _firstSetUpAll() async {
       .resolvedExecutionFilter
       .allowExecuteTestNames;
   if (allowExecuteTestNames.isEmpty) {
+    videoRecorderService.setEnabled(false);
     Log.i(
       kTag,
       'skip video recording in setUpAll because no tests will run '
@@ -228,9 +229,9 @@ Future<void> _firstSetUpAll() async {
     }
   }();
 
-  if (await enableVideoRecording) {
-    await videoRecorderService.startRecord();
-  } else {
+  final enabled = await enableVideoRecording;
+  videoRecorderService.setEnabled(enabled);
+  if (!enabled) {
     Log.i(
       kTag,
       'skip video recording in setUpAll because enableVideoRecording=false',

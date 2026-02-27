@@ -17,6 +17,7 @@ class WorkerVideoRecordingService {
   static const _kChunkSizeBytes = 256 * 1024;
   static const _kMinimumDurationToKeep = Duration(milliseconds: 300);
   static const _kMinimumSizeBytesToKeep = 4 * 1024;
+  bool _enabled = true;
 
   // ignore: prefer_constructors_over_static_methods
   static WorkerVideoRecordingService create() {
@@ -27,6 +28,10 @@ class WorkerVideoRecordingService {
   }
 
   Future<void> startRecord() async {
+    if (!enabled) {
+      Log.i(_kTag, 'startRecord skip because recording is disabled');
+      return;
+    }
     Log.i(_kTag, 'startRecord no-op on this platform');
   }
 
@@ -35,7 +40,18 @@ class WorkerVideoRecordingService {
   }
 
   Future<void> stopAndUpload(WorkerReportSaverService reporterService) async {
+    if (!enabled) {
+      Log.i(_kTag, 'stopAndUpload skip because recording is disabled');
+      return;
+    }
     Log.i(_kTag, 'stopAndUpload no-op on this platform');
+  }
+
+  bool get enabled => _enabled;
+
+  void setEnabled(bool value) {
+    _enabled = value;
+    Log.i(_kTag, 'setEnabled value=$value');
   }
 }
 
@@ -59,9 +75,16 @@ abstract class _WorkerVideoRecordingServiceDesktopBase
 
   @override
   Future<void> startRecord() async {
+    if (!enabled) {
+      Log.i(tag, 'startRecord skip because recording is disabled');
+      return;
+    }
+    if (_process != null && _startTime != null && _path != null) {
+      Log.i(tag, 'startRecord skip because recording is already active');
+      return;
+    }
     try {
       await cleanupBeforeStart();
-      if (_process != null) await _stopProcessSafely();
 
       final targetPath = await _createTargetPath();
       _startTime = DateTime.now();
@@ -77,6 +100,10 @@ abstract class _WorkerVideoRecordingServiceDesktopBase
 
   @override
   Future<void> stopAndUpload(WorkerReportSaverService reporterService) async {
+    if (!enabled) {
+      Log.i(tag, 'stopAndUpload skip because recording is disabled');
+      return;
+    }
     final process = _process;
     final startTime = _startTime;
     final path = _path;
@@ -234,6 +261,14 @@ abstract class _WorkerVideoRecordingServiceRecasterBase
 
   @override
   Future<void> startRecord() async {
+    if (!enabled) {
+      Log.i(tag, 'recaster.start skip because recording is disabled');
+      return;
+    }
+    if (_startTime != null && _targetPath != null) {
+      Log.i(tag, 'recaster.start skip because recording is already active');
+      return;
+    }
     final sw = Stopwatch()..start();
     try {
       Log.i(tag, 'recaster.start begin');
@@ -286,6 +321,10 @@ abstract class _WorkerVideoRecordingServiceRecasterBase
 
   @override
   Future<void> stopAndUpload(WorkerReportSaverService reporterService) async {
+    if (!enabled) {
+      Log.i(tag, 'recaster.stopAndUpload skip because recording is disabled');
+      return;
+    }
     final startTime = _startTime;
     final targetPath = _targetPath;
     _startTime = null;
