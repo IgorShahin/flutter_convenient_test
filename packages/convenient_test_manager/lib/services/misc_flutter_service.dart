@@ -108,7 +108,7 @@ class MiscFlutterService extends MiscDartService {
     });
     try {
       await allureService
-          .autoPublishToDockerIfConfigured(force: true)
+          .autoPublishToDockerIfConfigured(force: false)
           .timeout(_kOpenAllurePublishTimeout);
       runInAction(() {
         homePageStore.allurePublishUiState.value =
