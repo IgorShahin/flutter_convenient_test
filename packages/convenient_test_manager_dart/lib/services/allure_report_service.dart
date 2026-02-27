@@ -632,13 +632,13 @@ class ManagerAllureReportService {
     final blocks = <List<Map<String, dynamic>>>[];
     var currentBlock = <Map<String, dynamic>>[];
     for (final step in setupFixture.steps) {
-      final stepName = (step['name'] as String?)?.trim().toUpperCase() ?? '';
-      if (stepName == 'SETUP' && currentBlock.isNotEmpty) {
+      final stepNameRaw = (step['name'] as String?)?.trim() ?? '';
+      if (_isSetupSeparatorStep(stepNameRaw) && currentBlock.isNotEmpty) {
         blocks.add(currentBlock);
         currentBlock = <Map<String, dynamic>>[];
         continue;
       }
-      if (stepName == 'SETUP') {
+      if (_isSetupSeparatorStep(stepNameRaw)) {
         // Skip synthetic setup separator markers in rendered output.
         continue;
       }
@@ -669,6 +669,15 @@ class ManagerAllureReportService {
     setupFixture.steps
       ..clear()
       ..addAll(wrappers);
+  }
+
+  bool _isSetupSeparatorStep(String rawName) {
+    final name = rawName.trim().toUpperCase();
+    if (name == 'SETUP') return true;
+    if (name.startsWith('SETUP ')) return true;
+    if (name.startsWith('SETUP[')) return true;
+    if (name.startsWith('SETUP(')) return true;
+    return false;
   }
 
   List<String> _compactGroupHierarchyNames(List<String> rawGroupNames) {
