@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:convenient_test_common/convenient_test_common.dart';
 import 'package:convenient_test_dev/src/support/reporter_service.dart';
@@ -11,6 +10,11 @@ import 'package:intl/intl.dart';
 import 'package:recaster/recaster.dart';
 
 const kVideoChunkSnapshotPrefix = '__ct_video_chunk__';
+
+Future<String> _computeFileSha256(File file) async {
+  final digest = await sha256.bind(file.openRead()).first;
+  return digest.toString();
+}
 
 class WorkerVideoRecordingService {
   static const _kTag = 'WorkerVideoRecordingService';
@@ -202,35 +206,43 @@ abstract class _WorkerVideoRecordingServiceDesktopBase
     final startMs = startTime.millisecondsSinceEpoch;
     final endMs = endTime.millisecondsSinceEpoch;
 
-    final bytes = await file.readAsBytes();
-    final fileSha256 = sha256.convert(bytes).toString();
+    final sizeBytes = await file.length();
+    final fileSha256 = await _computeFileSha256(file);
     final totalChunks =
-        (bytes.length / WorkerVideoRecordingService._kChunkSizeBytes).ceil();
+        (sizeBytes / WorkerVideoRecordingService._kChunkSizeBytes).ceil();
     Log.i(
       tag,
       'uploadInChunks sessionId=$sessionId fileName=$fileName '
-      'sizeBytes=${bytes.length} totalChunks=$totalChunks',
+      'sizeBytes=$sizeBytes totalChunks=$totalChunks',
     );
 
-    for (var i = 0; i < totalChunks; i++) {
-      final start = i * WorkerVideoRecordingService._kChunkSizeBytes;
-      final end = min(
-        bytes.length,
-        start + WorkerVideoRecordingService._kChunkSizeBytes,
-      );
-      final chunk = Uint8List.sublistView(bytes, start, end);
-      final name =
-          '$kVideoChunkSnapshotPrefix:$sessionId:$encodedFileName:$startMs:$endMs:$i:${i == totalChunks - 1 ? 1 : 0}:$totalChunks:$fileSha256';
+    final raf = await file.open(mode: FileMode.read);
+    try {
+      for (var i = 0; i < totalChunks; i++) {
+        final remaining =
+            sizeBytes - i * WorkerVideoRecordingService._kChunkSizeBytes;
+        final readLen = min(
+          remaining,
+          WorkerVideoRecordingService._kChunkSizeBytes,
+        );
+        final chunk = await raf.read(readLen);
+        if (chunk.isEmpty) break;
 
-      await reporterService.report(
-        ReportItem(
-          snapshot: Snapshot(
-            logEntryId: Int64.ZERO,
-            name: name,
-            image: chunk,
+        final name =
+            '$kVideoChunkSnapshotPrefix:$sessionId:$encodedFileName:$startMs:$endMs:$i:${i == totalChunks - 1 ? 1 : 0}:$totalChunks:$fileSha256';
+
+        await reporterService.report(
+          ReportItem(
+            snapshot: Snapshot(
+              logEntryId: Int64.ZERO,
+              name: name,
+              image: chunk,
+            ),
           ),
-        ),
-      );
+        );
+      }
+    } finally {
+      await raf.close();
     }
   }
 
@@ -461,35 +473,43 @@ abstract class _WorkerVideoRecordingServiceRecasterBase
     final startMs = startTime.millisecondsSinceEpoch;
     final endMs = endTime.millisecondsSinceEpoch;
 
-    final bytes = await file.readAsBytes();
-    final fileSha256 = sha256.convert(bytes).toString();
+    final sizeBytes = await file.length();
+    final fileSha256 = await _computeFileSha256(file);
     final totalChunks =
-        (bytes.length / WorkerVideoRecordingService._kChunkSizeBytes).ceil();
+        (sizeBytes / WorkerVideoRecordingService._kChunkSizeBytes).ceil();
     Log.i(
       tag,
       'uploadInChunks sessionId=$sessionId fileName=$fileName '
-      'sizeBytes=${bytes.length} totalChunks=$totalChunks',
+      'sizeBytes=$sizeBytes totalChunks=$totalChunks',
     );
 
-    for (var i = 0; i < totalChunks; i++) {
-      final start = i * WorkerVideoRecordingService._kChunkSizeBytes;
-      final end = min(
-        bytes.length,
-        start + WorkerVideoRecordingService._kChunkSizeBytes,
-      );
-      final chunk = Uint8List.sublistView(bytes, start, end);
-      final name =
-          '$kVideoChunkSnapshotPrefix:$sessionId:$encodedFileName:$startMs:$endMs:$i:${i == totalChunks - 1 ? 1 : 0}:$totalChunks:$fileSha256';
+    final raf = await file.open(mode: FileMode.read);
+    try {
+      for (var i = 0; i < totalChunks; i++) {
+        final remaining =
+            sizeBytes - i * WorkerVideoRecordingService._kChunkSizeBytes;
+        final readLen = min(
+          remaining,
+          WorkerVideoRecordingService._kChunkSizeBytes,
+        );
+        final chunk = await raf.read(readLen);
+        if (chunk.isEmpty) break;
 
-      await reporterService.report(
-        ReportItem(
-          snapshot: Snapshot(
-            logEntryId: Int64.ZERO,
-            name: name,
-            image: chunk,
+        final name =
+            '$kVideoChunkSnapshotPrefix:$sessionId:$encodedFileName:$startMs:$endMs:$i:${i == totalChunks - 1 ? 1 : 0}:$totalChunks:$fileSha256';
+
+        await reporterService.report(
+          ReportItem(
+            snapshot: Snapshot(
+              logEntryId: Int64.ZERO,
+              name: name,
+              image: chunk,
+            ),
           ),
-        ),
-      );
+        );
+      }
+    } finally {
+      await raf.close();
     }
   }
 
