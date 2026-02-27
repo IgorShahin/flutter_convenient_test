@@ -14,20 +14,13 @@ import 'package:get_it/get_it.dart';
 class ManagerAllureReportService {
   static const _kTag = 'ManagerAllureReportService';
   static const _kVideoChunkSnapshotPrefix = '__ct_video_chunk__';
-  static const _kAutoPublishEnabledEnvKey =
-      'CONVENIENT_TEST_ALLURE_DOCKER_AUTO_PUBLISH';
-  static const _kAutoPublishApiBaseUrlEnvKey =
-      'CONVENIENT_TEST_ALLURE_DOCKER_API_BASE_URL';
-  static const _kAutoPublishProjectIdEnvKey =
-      'CONVENIENT_TEST_ALLURE_DOCKER_PROJECT_ID';
-  static const _kAutoPublishProjectPrefixEnvKey =
-      'CONVENIENT_TEST_ALLURE_DOCKER_PROJECT_PREFIX';
-  static const _kAutoPublishProjectEnvEnvKey =
-      'CONVENIENT_TEST_ALLURE_DOCKER_PROJECT_ENV';
-  static const _kAutoPublishProjectRepoEnvKey =
-      'CONVENIENT_TEST_ALLURE_DOCKER_PROJECT_REPO';
-  static const _kDefaultDockerApiBaseUrl =
-      'http://localhost:5050/allure-docker-service';
+  static const _kAutoPublishEnabledEnvKey = 'CONVENIENT_TEST_ALLURE_DOCKER_AUTO_PUBLISH';
+  static const _kAutoPublishApiBaseUrlEnvKey = 'CONVENIENT_TEST_ALLURE_DOCKER_API_BASE_URL';
+  static const _kAutoPublishProjectIdEnvKey = 'CONVENIENT_TEST_ALLURE_DOCKER_PROJECT_ID';
+  static const _kAutoPublishProjectPrefixEnvKey = 'CONVENIENT_TEST_ALLURE_DOCKER_PROJECT_PREFIX';
+  static const _kAutoPublishProjectEnvEnvKey = 'CONVENIENT_TEST_ALLURE_DOCKER_PROJECT_ENV';
+  static const _kAutoPublishProjectRepoEnvKey = 'CONVENIENT_TEST_ALLURE_DOCKER_PROJECT_REPO';
+  static const _kDefaultDockerApiBaseUrl = 'http://localhost:5050/allure-docker-service';
   static const _kDefaultProjectId = 'default';
   static const _kConfigEnableKey = 'enableAllureDockerAutoPublish';
   static const _kConfigApiBaseUrlKey = 'allureDockerApiBaseUrl';
@@ -80,8 +73,7 @@ class ManagerAllureReportService {
     final settings = await _resolveAutoPublishSettings();
     if (!settings.enabled) return;
 
-    final superRunId =
-        GetIt.I.get<WorkerSuperRunStore>().currSuperRunController.superRunId;
+    final superRunId = GetIt.I.get<WorkerSuperRunStore>().currSuperRunController.superRunId;
     if (!force && _lastAutoPublishAttemptedSuperRunId == superRunId) return;
     if (_lastAutoPublishedSuperRunId == superRunId) return;
     if (_autoPublishInProgress) return;
@@ -93,10 +85,8 @@ class ManagerAllureReportService {
       final sourceResultsDir = _resultsDirPath;
       if (sourceResultsDir == null) return;
 
-      final hasResults = Directory(sourceResultsDir)
-          .listSync()
-          .whereType<File>()
-          .any((f) => f.path.endsWith('-result.json'));
+      final hasResults =
+          Directory(sourceResultsDir).listSync().whereType<File>().any((f) => f.path.endsWith('-result.json'));
       if (!hasResults) {
         Log.i(_kTag, 'auto-publish skip: no non-service allure result files');
         return;
@@ -132,7 +122,14 @@ class ManagerAllureReportService {
         settings.apiBaseUrl,
         '/generate-report',
         projectId: settings.projectId,
-      );
+      ).replace(queryParameters: {
+        ..._buildApiUri(
+          settings.apiBaseUrl,
+          '/generate-report',
+          projectId: settings.projectId,
+        ).queryParameters,
+        'keep_history': '1',
+      });
       final responseCode = await _httpGetStatus(generateUri.toString());
       if (responseCode < 200 || responseCode >= 300) {
         Log.w(
@@ -165,12 +162,9 @@ class ManagerAllureReportService {
   Future<void> _handleItem(ReportItem item) async {
     switch (item.whichSubType()) {
       case ReportItem_SubType.suiteInfoProto:
-        final suiteInfoDigest =
-            crypto.sha1.convert(item.suiteInfoProto.writeToBuffer()).toString();
-        final superRunId =
-            GetIt.I.get<WorkerSuperRunStore>().currSuperRunController.superRunId;
-        final shouldReset = _lastSuiteInfoDigestBySuperRunId[superRunId] !=
-            suiteInfoDigest;
+        final suiteInfoDigest = crypto.sha1.convert(item.suiteInfoProto.writeToBuffer()).toString();
+        final superRunId = GetIt.I.get<WorkerSuperRunStore>().currSuperRunController.superRunId;
+        final shouldReset = _lastSuiteInfoDigestBySuperRunId[superRunId] != suiteInfoDigest;
         _lastSuiteInfoDigestBySuperRunId[superRunId] = suiteInfoDigest;
         if (shouldReset) {
           await _clearAllureResults();
@@ -198,10 +192,17 @@ class ManagerAllureReportService {
         await _handleSnapshot(item.snapshot);
         return;
       case ReportItem_SubType.setUpAll:
+        return;
       case ReportItem_SubType.tearDownAll:
+        await _handleTearDownAll();
+        return;
       case ReportItem_SubType.notSet:
         return;
     }
+  }
+
+  Future<void> _handleTearDownAll() async {
+    await _backfillVideosForFinishedTests();
   }
 
   void _handleLogEntry(LogEntry request) {
@@ -213,9 +214,7 @@ class ManagerAllureReportService {
       for (final sub in request.subEntries) {
         final subMs = _usToMs(sub.time.toInt());
         final prevIndex = _deferredSetUpAllLastStepIndexByLogEntryId[logEntryId];
-        if (prevIndex != null &&
-            prevIndex >= 0 &&
-            prevIndex < _deferredSetUpAllSteps.length) {
+        if (prevIndex != null && prevIndex >= 0 && prevIndex < _deferredSetUpAllSteps.length) {
           final prevStep = _deferredSetUpAllSteps[prevIndex];
           final prevStart = (prevStep['start'] as int?) ?? subMs;
           prevStep['stop'] = max(prevStart, subMs);
@@ -325,11 +324,9 @@ class ManagerAllureReportService {
       return;
     }
     if (_isSetUpAllServiceTestName(testName)) {
-      final deferredStepIndex =
-          _deferredSetUpAllLastStepIndexByLogEntryId[logEntryId];
+      final deferredStepIndex = _deferredSetUpAllLastStepIndexByLogEntryId[logEntryId];
       if (deferredStepIndex == null) {
-        _deferredSetUpAllAttachments.add(_PendingSnapshot(
-            name: request.name, image: request.image as Uint8List));
+        _deferredSetUpAllAttachments.add(_PendingSnapshot(name: request.name, image: request.image as Uint8List));
       } else {
         _attachSnapshotToStep(
           steps: _deferredSetUpAllSteps,
@@ -342,18 +339,15 @@ class ManagerAllureReportService {
     }
     if (_isServiceTestName(testName)) return;
 
-    final runtime = _runtimeByLogEntryId(logEntryId) ??
-        _activeRuntimeByTestName[testName] ??
-        _ensureActiveRuntime(testName);
+    final runtime =
+        _runtimeByLogEntryId(logEntryId) ?? _activeRuntimeByTestName[testName] ?? _ensureActiveRuntime(testName);
     final stepPointer = _lastStepPointerByLogEntryId[logEntryId];
     if (stepPointer == null || runtime.finished) {
-      _attachSnapshotToRuntime(
-          runtime, request.name, request.image as Uint8List);
+      _attachSnapshotToRuntime(runtime, request.name, request.image as Uint8List);
     } else {
       final steps = _stepsForPointer(runtime, stepPointer);
       if (steps == null) {
-        _attachSnapshotToRuntime(
-            runtime, request.name, request.image as Uint8List);
+        _attachSnapshotToRuntime(runtime, request.name, request.image as Uint8List);
         return;
       }
       _attachSnapshotToStep(
@@ -416,9 +410,7 @@ class ManagerAllureReportService {
     File(path).writeAsBytesSync(bytes, flush: true);
 
     final step = steps[stepIndex];
-    final attachments =
-        (step['attachments'] as List?)?.cast<Map<String, dynamic>>() ??
-            <Map<String, dynamic>>[];
+    final attachments = (step['attachments'] as List?)?.cast<Map<String, dynamic>>() ?? <Map<String, dynamic>>[];
     attachments.add({
       'name': snapshotName.isEmpty ? 'snapshot' : snapshotName,
       'source': source,
@@ -493,6 +485,7 @@ class ManagerAllureReportService {
     final resultFileName = '${runtime.uuid}-result.json';
     final resultPath = '$_resultsDirPath$resultFileName';
     File(resultPath).writeAsStringSync(jsonEncode(result), flush: true);
+    runtime.resultPath = resultPath;
     await _writeContainer(runtime);
 
     final active = _activeRuntimeByTestName[runtime.testName];
@@ -502,8 +495,7 @@ class ManagerAllureReportService {
   }
 
   List<Map<String, String>> _suiteLabelsForTest(String testName) {
-    final normalized =
-        _compactGroupHierarchyNames(_suiteGroupNamesForTest(testName));
+    final normalized = _compactGroupHierarchyNames(_suiteGroupNamesForTest(testName));
     if (normalized.isEmpty) return const [];
 
     final labels = <Map<String, String>>[];
@@ -579,8 +571,7 @@ class ManagerAllureReportService {
     }();
     return _stripGroupPrefixFromDisplayName(
       rawDisplayName: raw,
-      suiteGroupNames:
-          _compactGroupHierarchyNames(_suiteGroupNamesForTest(testName)),
+      suiteGroupNames: _compactGroupHierarchyNames(_suiteGroupNamesForTest(testName)),
     );
   }
 
@@ -591,8 +582,7 @@ class ManagerAllureReportService {
     var ans = rawDisplayName.trim();
     if (ans.isEmpty || suiteGroupNames.isEmpty) return ans;
 
-    final orderedGroups = suiteGroupNames.toList()
-      ..sort((a, b) => b.length.compareTo(a.length));
+    final orderedGroups = suiteGroupNames.toList()..sort((a, b) => b.length.compareTo(a.length));
 
     var changed = true;
     while (changed) {
@@ -646,12 +636,8 @@ class ManagerAllureReportService {
       final block = blocks[i];
       final start = (block.first['start'] as int?) ?? runtime.startMs;
       final stop = (block.last['stop'] as int?) ?? runtime.stopMs;
-      final groupName = (i + offset < compactedGroupNames.length)
-          ? compactedGroupNames[i + offset]
-          : 'group-${i + 1}';
-      final hasFailed = block.any((e) =>
-          (e['status'] as String?) == 'failed' ||
-          (e['status'] as String?) == 'broken');
+      final groupName = (i + offset < compactedGroupNames.length) ? compactedGroupNames[i + offset] : 'group-${i + 1}';
+      final hasFailed = block.any((e) => (e['status'] as String?) == 'failed' || (e['status'] as String?) == 'broken');
       wrappers.add({
         'name': groupName,
         'status': hasFailed ? 'failed' : 'passed',
@@ -686,62 +672,9 @@ class ManagerAllureReportService {
   }
 
   Future<void> _attachRecordedVideosToRuntime(_AllureTestRuntime runtime) async {
-    final videoDirPath =
-        await GetIt.I.get<FsService>().getActiveSuperRunDataSubDirectory(
-              category: 'Video',
-            );
-    final videoDir = Directory(videoDirPath);
-    if (!videoDir.existsSync()) return;
-
-    final candidates = <File>[];
-    for (final entry in videoDir.listSync(followLinks: false)) {
-      if (entry is! File) continue;
-      if (_consumedVideoAttachmentPaths.contains(entry.path)) continue;
-      final lower = entry.path.toLowerCase();
-      if (!(lower.endsWith('.mov') ||
-          lower.endsWith('.mp4') ||
-          lower.endsWith('.mkv') ||
-          lower.endsWith('.webm'))) {
-        continue;
-      }
-      candidates.add(entry);
-    }
+    final candidates = await _collectVideoCandidates(includeConsumed: false);
     if (candidates.isEmpty) return;
-
-    candidates.sort((a, b) {
-      final aMs = a.statSync().modified.toUtc().millisecondsSinceEpoch;
-      final bMs = b.statSync().modified.toUtc().millisecondsSinceEpoch;
-      return aMs.compareTo(bMs);
-    });
-
-    const leadLagToleranceMs = 5 * 60 * 1000;
-    final matched = <File>[];
-    for (final file in candidates) {
-      final stat = file.statSync();
-      final endMs = stat.modified.toUtc().millisecondsSinceEpoch;
-      final startHintMs = _videoStartHintMsFromPath(file.path);
-
-      final overlaps = endMs >= runtime.startMs - leadLagToleranceMs &&
-          (startHintMs ?? endMs) <= runtime.stopMs + leadLagToleranceMs;
-      if (overlaps) {
-        matched.add(file);
-      }
-    }
-
-    if (matched.isEmpty) {
-      final nearest = candidates
-          .map((f) => MapEntry(
-                f,
-                (f.statSync().modified.toUtc().millisecondsSinceEpoch -
-                        runtime.stopMs)
-                    .abs(),
-              ))
-          .toList()
-        ..sort((a, b) => a.value.compareTo(b.value));
-      if (nearest.isNotEmpty && nearest.first.value <= 60 * 1000) {
-        matched.add(nearest.first.key);
-      }
-    }
+    final matched = _matchVideosForRuntime(runtime: runtime, candidates: candidates);
 
     for (var i = 0; i < matched.length; i++) {
       final file = matched[i];
@@ -759,9 +692,122 @@ class ManagerAllureReportService {
     }
   }
 
+  Future<List<File>> _collectVideoCandidates({
+    required bool includeConsumed,
+  }) async {
+    final videoDirPath = await GetIt.I.get<FsService>().getActiveSuperRunDataSubDirectory(
+          category: 'Video',
+        );
+    final videoDir = Directory(videoDirPath);
+    if (!videoDir.existsSync()) return const [];
+
+    final candidates = <File>[];
+    for (final entry in videoDir.listSync(followLinks: false)) {
+      if (entry is! File) continue;
+      if (!includeConsumed && _consumedVideoAttachmentPaths.contains(entry.path)) {
+        continue;
+      }
+      final lower = entry.path.toLowerCase();
+      if (!(lower.endsWith('.mov') || lower.endsWith('.mp4') || lower.endsWith('.mkv') || lower.endsWith('.webm'))) {
+        continue;
+      }
+      candidates.add(entry);
+    }
+    candidates.sort((a, b) {
+      final aMs = a.statSync().modified.toUtc().millisecondsSinceEpoch;
+      final bMs = b.statSync().modified.toUtc().millisecondsSinceEpoch;
+      return aMs.compareTo(bMs);
+    });
+    return candidates;
+  }
+
+  List<File> _matchVideosForRuntime({
+    required _AllureTestRuntime runtime,
+    required List<File> candidates,
+  }) {
+    const leadLagToleranceMs = 5 * 60 * 1000;
+    final matched = <File>[];
+    for (final file in candidates) {
+      final stat = file.statSync();
+      final endMs = stat.modified.toUtc().millisecondsSinceEpoch;
+      final startHintMs = _videoStartHintMsFromPath(file.path);
+      final overlaps = endMs >= runtime.startMs - leadLagToleranceMs &&
+          (startHintMs ?? endMs) <= runtime.stopMs + leadLagToleranceMs;
+      if (overlaps) {
+        matched.add(file);
+      }
+    }
+
+    if (matched.isNotEmpty) return matched;
+
+    final nearest = candidates
+        .map((f) => MapEntry(
+              f,
+              (f.statSync().modified.toUtc().millisecondsSinceEpoch - runtime.stopMs).abs(),
+            ))
+        .toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+    if (nearest.isNotEmpty && nearest.first.value <= 60 * 1000) {
+      return [nearest.first.key];
+    }
+    return const [];
+  }
+
+  Future<void> _backfillVideosForFinishedTests() async {
+    final resultsDirPath = _resultsDirPath;
+    if (resultsDirPath == null) return;
+
+    final candidates = await _collectVideoCandidates(includeConsumed: true);
+    if (candidates.isEmpty) return;
+
+    for (final runtime in _runtimeByUuid.values) {
+      if (!runtime.finished) continue;
+      final resultPath = runtime.resultPath;
+      if (resultPath == null || resultPath.isEmpty) continue;
+      if (runtime.attachments.any((e) => (e['type'] as String?)?.startsWith('video/') == true)) {
+        continue;
+      }
+
+      final matched = _matchVideosForRuntime(runtime: runtime, candidates: candidates);
+      if (matched.isEmpty) continue;
+
+      final resultFile = File(resultPath);
+      if (!resultFile.existsSync()) continue;
+
+      final decoded = jsonDecode(resultFile.readAsStringSync()) as Map<String, dynamic>;
+      final resultAttachments =
+          ((decoded['attachments'] as List?) ?? const <dynamic>[]).cast<Map<String, dynamic>>().toList();
+      if (resultAttachments.any((e) => (e['type'] as String?)?.startsWith('video/') == true)) {
+        continue;
+      }
+
+      for (var i = 0; i < matched.length; i++) {
+        final file = matched[i];
+        final extension = _pathExtension(file.path);
+        final source = _nextArtifactName('attachment', extension);
+        final targetPath = '$resultsDirPath$source';
+        await file.copy(targetPath);
+        final attachment = {
+          'name': matched.length == 1 ? 'video' : 'video-${i + 1}',
+          'source': source,
+          'type': _videoMimeTypeForExtension(extension),
+        };
+        runtime.attachments.add(attachment);
+        resultAttachments.add(attachment);
+      }
+
+      decoded['attachments'] = resultAttachments;
+      resultFile.writeAsStringSync(jsonEncode(decoded), flush: true);
+      Log.i(
+        _kTag,
+        'video backfill applied testName=${runtime.testName} '
+        'videos=${matched.length} resultPath=$resultPath',
+      );
+    }
+  }
+
   int? _videoStartHintMsFromPath(String path) {
-    final fileName =
-        path.split(Platform.pathSeparator).isEmpty ? path : path.split(Platform.pathSeparator).last;
+    final fileName = path.split(Platform.pathSeparator).isEmpty ? path : path.split(Platform.pathSeparator).last;
     final match = RegExp(r'(\d{8}_\d{6})').firstMatch(fileName);
     if (match == null) return null;
 
@@ -821,10 +867,7 @@ class ManagerAllureReportService {
         score = 100000 + normalizedCandidate.length;
       } else if (normalizedTestName.endsWith(normalizedCandidate) &&
           (normalizedTestName.length == normalizedCandidate.length ||
-              normalizedTestName[normalizedTestName.length -
-                      normalizedCandidate.length -
-                      1] ==
-                  ' ')) {
+              normalizedTestName[normalizedTestName.length - normalizedCandidate.length - 1] == ' ')) {
         // Common case: runtime test name contains group prefixes while suite
         // info contains only the leaf test title.
         score = 10000 + normalizedCandidate.length;
@@ -870,13 +913,10 @@ class ManagerAllureReportService {
   bool _isServiceTestName(String? testName) {
     if (testName == null) return true;
     final normalized = testName.trim();
-    return normalized.isEmpty ||
-        normalized == '(setUpAll)' ||
-        normalized == '(tearDownAll)';
+    return normalized.isEmpty || normalized == '(setUpAll)' || normalized == '(tearDownAll)';
   }
 
-  bool _isSetUpAllServiceTestName(String? testName) =>
-      testName?.trim() == '(setUpAll)';
+  bool _isSetUpAllServiceTestName(String? testName) => testName?.trim() == '(setUpAll)';
 
   Map<String, dynamic> _buildStep(LogSubEntry sub, int subMs) {
     final step = <String, dynamic>{
@@ -908,8 +948,7 @@ class ManagerAllureReportService {
     if (pendingSnapshots == null) return;
 
     if (_isSetUpAllServiceTestName(testName)) {
-      final deferredStepIndex =
-          _deferredSetUpAllLastStepIndexByLogEntryId[logEntryId];
+      final deferredStepIndex = _deferredSetUpAllLastStepIndexByLogEntryId[logEntryId];
       if (deferredStepIndex == null) {
         _deferredSetUpAllAttachments.addAll(pendingSnapshots);
       } else {
@@ -926,9 +965,8 @@ class ManagerAllureReportService {
     }
     if (_isServiceTestName(testName)) return;
 
-    final runtime = _runtimeByLogEntryId(logEntryId) ??
-        _activeRuntimeByTestName[testName] ??
-        _ensureActiveRuntime(testName);
+    final runtime =
+        _runtimeByLogEntryId(logEntryId) ?? _activeRuntimeByTestName[testName] ?? _ensureActiveRuntime(testName);
     final stepPointer = _lastStepPointerByLogEntryId[logEntryId];
     for (final pending in pendingSnapshots) {
       if (stepPointer == null || runtime.finished) {
@@ -959,10 +997,8 @@ class ManagerAllureReportService {
     final beforeFixture = runtime.ensureBeforeFixture('SETUP_ALL');
     beforeFixture.steps.addAll(_deferredSetUpAllSteps);
     if (_deferredSetUpAllSteps.isNotEmpty) {
-      final start =
-          (_deferredSetUpAllSteps.first['start'] as int?) ?? runtime.startMs;
-      final stop =
-          (_deferredSetUpAllSteps.last['stop'] as int?) ?? runtime.startMs;
+      final start = (_deferredSetUpAllSteps.first['start'] as int?) ?? runtime.startMs;
+      final stop = (_deferredSetUpAllSteps.last['stop'] as int?) ?? runtime.startMs;
       beforeFixture.touchRange(start: start, stop: stop);
     }
     if (_deferredSetUpAllLogBuffer.isNotEmpty) {
@@ -1086,9 +1122,7 @@ class ManagerAllureReportService {
   }
 
   String _statusForLogSubEntry(LogSubEntry sub) {
-    if (sub.type == LogSubEntryType.ASSERT_FAIL ||
-        sub.error.isNotEmpty ||
-        sub.stackTrace.isNotEmpty) {
+    if (sub.type == LogSubEntryType.ASSERT_FAIL || sub.error.isNotEmpty || sub.stackTrace.isNotEmpty) {
       return 'failed';
     }
     return 'passed';
@@ -1112,17 +1146,10 @@ class ManagerAllureReportService {
   int _usToMs(int value) => value ~/ 1000;
 
   String _detectImageExtension(Uint8List bytes) {
-    if (bytes.length >= 8 &&
-        bytes[0] == 0x89 &&
-        bytes[1] == 0x50 &&
-        bytes[2] == 0x4E &&
-        bytes[3] == 0x47) {
+    if (bytes.length >= 8 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47) {
       return 'png';
     }
-    if (bytes.length >= 3 &&
-        bytes[0] == 0xFF &&
-        bytes[1] == 0xD8 &&
-        bytes[2] == 0xFF) {
+    if (bytes.length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) {
       return 'jpg';
     }
     return 'bin';
@@ -1159,10 +1186,9 @@ class ManagerAllureReportService {
   }
 
   Future<void> _ensureActiveRunContext() async {
-    final resultsDirPath =
-        await GetIt.I.get<FsService>().getActiveSuperRunDataSubDirectory(
-              category: 'AllureResults',
-            );
+    final resultsDirPath = await GetIt.I.get<FsService>().getActiveSuperRunDataSubDirectory(
+          category: 'AllureResults',
+        );
     if (_resultsDirPath == resultsDirPath) {
       return;
     }
@@ -1186,8 +1212,7 @@ class ManagerAllureReportService {
 
   Future<void> _writeContainer(_AllureTestRuntime runtime) async {
     if (_resultsDirPath == null) return;
-    final befores =
-        runtime.beforeFixtures.values.map((e) => e.toJson()).toList();
+    final befores = runtime.beforeFixtures.values.map((e) => e.toJson()).toList();
     final afters = runtime.afterFixtures.values.map((e) => e.toJson()).toList();
     if (befores.isEmpty && afters.isEmpty) return;
 
@@ -1230,10 +1255,7 @@ class ManagerAllureReportService {
     final sourceDir = Directory(sourceDirPath);
     if (!sourceDir.existsSync()) return 0;
 
-    final files = sourceDir
-        .listSync(recursive: true, followLinks: false)
-        .whereType<File>()
-        .toList();
+    final files = sourceDir.listSync(recursive: true, followLinks: false).whereType<File>().toList();
     if (files.isEmpty) return 0;
 
     final multipartStatus = await _sendResultsMultipart(
@@ -1263,8 +1285,7 @@ class ManagerAllureReportService {
     return jsonStatus;
   }
 
-  String _escapeHeaderValue(String value) =>
-      value.replaceAll('\\', r'\\').replaceAll('"', r'\"');
+  String _escapeHeaderValue(String value) => value.replaceAll('\\', r'\\').replaceAll('"', r'\"');
 
   Future<int> _sendResultsMultipart({
     required List<File> files,
@@ -1272,31 +1293,23 @@ class ManagerAllureReportService {
     required String projectId,
     required String sourceDirPath,
   }) async {
-    final uri = _buildApiUri(apiBaseUrl, '/send-results', projectId: projectId)
-        .replace(queryParameters: {
-      ..._buildApiUri(apiBaseUrl, '/send-results', projectId: projectId)
-          .queryParameters,
+    final uri = _buildApiUri(apiBaseUrl, '/send-results', projectId: projectId).replace(queryParameters: {
+      ..._buildApiUri(apiBaseUrl, '/send-results', projectId: projectId).queryParameters,
       'force_project_creation': 'true',
     });
-    final boundary =
-        '----ct-boundary-${DateTime.now().toUtc().microsecondsSinceEpoch}-${_random.nextInt(1 << 32)}';
-    final rootPath = sourceDirPath.endsWith(Platform.pathSeparator)
-        ? sourceDirPath
-        : '$sourceDirPath${Platform.pathSeparator}';
+    final boundary = '----ct-boundary-${DateTime.now().toUtc().microsecondsSinceEpoch}-${_random.nextInt(1 << 32)}';
+    final rootPath =
+        sourceDirPath.endsWith(Platform.pathSeparator) ? sourceDirPath : '$sourceDirPath${Platform.pathSeparator}';
 
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 10);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
     try {
       final req = await client.postUrl(uri);
-      req.headers.contentType = ContentType('multipart', 'form-data',
-          parameters: {'boundary': boundary});
+      req.headers.contentType = ContentType('multipart', 'form-data', parameters: {'boundary': boundary});
 
       for (final file in files) {
         final fileName = file.path.startsWith(rootPath)
             ? file.path.substring(rootPath.length)
-            : (file.uri.pathSegments.isEmpty
-                ? file.path
-                : file.uri.pathSegments.last);
+            : (file.uri.pathSegments.isEmpty ? file.path : file.uri.pathSegments.last);
         req.add(utf8.encode('--$boundary\r\n'));
         req.add(utf8.encode(
           'Content-Disposition: form-data; name="files[]"; filename="${_escapeHeaderValue(fileName)}"\r\n',
@@ -1324,23 +1337,18 @@ class ManagerAllureReportService {
     required String projectId,
     required String sourceDirPath,
   }) async {
-    final uri = _buildApiUri(apiBaseUrl, '/send-results', projectId: projectId)
-        .replace(queryParameters: {
-      ..._buildApiUri(apiBaseUrl, '/send-results', projectId: projectId)
-          .queryParameters,
+    final uri = _buildApiUri(apiBaseUrl, '/send-results', projectId: projectId).replace(queryParameters: {
+      ..._buildApiUri(apiBaseUrl, '/send-results', projectId: projectId).queryParameters,
       'force_project_creation': 'true',
     });
-    final rootPath = sourceDirPath.endsWith(Platform.pathSeparator)
-        ? sourceDirPath
-        : '$sourceDirPath${Platform.pathSeparator}';
+    final rootPath =
+        sourceDirPath.endsWith(Platform.pathSeparator) ? sourceDirPath : '$sourceDirPath${Platform.pathSeparator}';
 
     final results = <Map<String, String>>[];
     for (final file in files) {
       final relativeName = file.path.startsWith(rootPath)
           ? file.path.substring(rootPath.length)
-          : (file.uri.pathSegments.isEmpty
-              ? file.path
-              : file.uri.pathSegments.last);
+          : (file.uri.pathSegments.isEmpty ? file.path : file.uri.pathSegments.last);
       final bytes = await file.readAsBytes();
       results.add({
         'file_name': relativeName,
@@ -1352,8 +1360,7 @@ class ManagerAllureReportService {
       'results': results,
     });
 
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 10);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
     try {
       final req = await client.postUrl(uri);
       req.headers.contentType = ContentType('application', 'json');
@@ -1385,10 +1392,7 @@ class ManagerAllureReportService {
     final value = environmentValue(_kAutoPublishEnabledEnvKey);
     if (value == null) return false;
     final normalized = value.trim().toLowerCase();
-    return normalized == '1' ||
-        normalized == 'true' ||
-        normalized == 'yes' ||
-        normalized == 'on';
+    return normalized == '1' || normalized == 'true' || normalized == 'yes' || normalized == 'on';
   }
 
   Future<_AllureAutoPublishSettings> _resolveAutoPublishSettings() async {
@@ -1397,8 +1401,7 @@ class ManagerAllureReportService {
     final envEnabled = _autoPublishEnabled();
     final enabled = configEnabled ?? envEnabled;
 
-    final configApiBaseUrl =
-        _toNullableString(configJson?[_kConfigApiBaseUrlKey]);
+    final configApiBaseUrl = _toNullableString(configJson?[_kConfigApiBaseUrlKey]);
     final envApiBaseUrl = environmentValue(_kAutoPublishApiBaseUrlEnvKey);
     final apiBaseUrl = (() {
       final raw = configApiBaseUrl ?? envApiBaseUrl;
@@ -1406,16 +1409,12 @@ class ManagerAllureReportService {
       return raw;
     })();
 
-    final configProjectId =
-        _toNullableString(configJson?[_kConfigProjectIdKey]);
+    final configProjectId = _toNullableString(configJson?[_kConfigProjectIdKey]);
     final envProjectId = environmentValue(_kAutoPublishProjectIdEnvKey);
-    final configProjectPrefix =
-        _toNullableString(configJson?[_kConfigProjectPrefixKey]);
+    final configProjectPrefix = _toNullableString(configJson?[_kConfigProjectPrefixKey]);
     final envProjectPrefix = environmentValue(_kAutoPublishProjectPrefixEnvKey);
-    final configProjectEnv =
-        _toNullableString(configJson?[_kConfigProjectEnvKey]);
-    final configProjectRepo =
-        _toNullableString(configJson?[_kConfigProjectRepoKey]);
+    final configProjectEnv = _toNullableString(configJson?[_kConfigProjectEnvKey]);
+    final configProjectRepo = _toNullableString(configJson?[_kConfigProjectRepoKey]);
     final envProjectEnv = _firstNonEmptyEnvironmentValue(const [
       _kAutoPublishProjectEnvEnvKey,
       'CONVENIENT_TEST_ENV',
@@ -1570,8 +1569,7 @@ class ManagerAllureReportService {
     final buffer = StringBuffer();
     var prevDash = false;
     for (final code in lower.codeUnits) {
-      final isAlphaNum =
-          (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
+      final isAlphaNum = (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
       final isAllowedPunct = code == 45;
       if (isAlphaNum || isAllowedPunct) {
         buffer.writeCharCode(code);
@@ -1705,6 +1703,7 @@ class _AllureTestRuntime {
   final Map<String, _AllureFixtureRuntime> beforeFixtures = {};
   final Map<String, _AllureFixtureRuntime> afterFixtures = {};
   final StringBuffer logBuffer = StringBuffer();
+  String? resultPath;
   String? status;
   Map<String, dynamic>? statusDetails;
   bool finished = false;
@@ -1721,6 +1720,7 @@ class _AllureTestRuntime {
   }) : historyId = testName;
 
   int get startMs => _startMs ?? DateTime.now().toUtc().millisecondsSinceEpoch;
+
   int get stopMs => _stopMs ?? DateTime.now().toUtc().millisecondsSinceEpoch;
 
   void touchAt(int ms) {
@@ -1797,10 +1797,10 @@ class _AllureHookRouting {
   const _AllureHookRouting.body()
       : section = _AllureHookSection.body,
         fixtureName = null;
-  const _AllureHookRouting.before(this.fixtureName)
-      : section = _AllureHookSection.before;
-  const _AllureHookRouting.after(this.fixtureName)
-      : section = _AllureHookSection.after;
+
+  const _AllureHookRouting.before(this.fixtureName) : section = _AllureHookSection.before;
+
+  const _AllureHookRouting.after(this.fixtureName) : section = _AllureHookSection.after;
 }
 
 class _AllureStepPointer {

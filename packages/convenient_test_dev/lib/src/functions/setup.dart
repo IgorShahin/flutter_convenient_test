@@ -13,7 +13,7 @@ import 'package:meta/meta.dart';
 @isTest
 void setUpPerTest(dynamic Function() body) {
   setUp(() async {
-    convenientTestLog('SETUP', '');
+    // convenientTestLog('SETUP', '');
     await Future.sync(body);
   });
 }
@@ -41,7 +41,7 @@ void setUpOncePerRun(dynamic Function() body) {
 @isTest
 void tearDownPerTest(dynamic Function() body) {
   tearDown(() async {
-    convenientTestLog('TEARDOWN', '');
+    // convenientTestLog('TEARDOWN', '');
     await Future.sync(body);
   });
 }
@@ -58,7 +58,7 @@ void tearDownOncePerRun(dynamic Function() body) {
     );
     if (!shouldExecute) return;
 
-    convenientTestLog('TEARDOWN_ALL', '');
+    // convenientTestLog('TEARDOWN_ALL', '');
     await Future.sync(body);
   });
 }
