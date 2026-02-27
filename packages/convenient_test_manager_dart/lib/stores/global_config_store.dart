@@ -23,6 +23,10 @@ abstract class _GlobalConfig with Store {
   @observable
   bool enableVideoRecording;
 
+  int videoRecordingFps;
+
+  int videoRecordingResolutionDivisor;
+
   @observable
   bool enableReportSaver;
 
@@ -41,6 +45,8 @@ abstract class _GlobalConfig with Store {
   _GlobalConfig({
     required this.isolationMode,
     required this.enableVideoRecording,
+    required this.videoRecordingFps,
+    required this.videoRecordingResolutionDivisor,
     required this.enableReportSaver,
     required this.retryMode,
     required this.goldenDiffGitRepo,
@@ -56,6 +62,8 @@ sealed class GlobalConfigNullable with _$GlobalConfigNullable {
   factory GlobalConfigNullable({
     bool? isolationMode,
     bool? enableVideoRecording,
+    int? videoRecordingFps,
+    int? videoRecordingResolutionDivisor,
     bool? enableReportSaver,
     bool? retryMode,
     String? goldenDiffGitRepo,
@@ -117,6 +125,11 @@ sealed class GlobalConfigNullable with _$GlobalConfigNullable {
           const String.fromEnvironment('CONVENIENT_TEST_ISOLATION_MODE')),
       enableVideoRecording: _stringToNullableBool(const String.fromEnvironment(
           'CONVENIENT_TEST_ENABLE_VIDEO_RECORDING')),
+      videoRecordingFps: _stringToNullableInt(
+          const String.fromEnvironment('CONVENIENT_TEST_VIDEO_FPS')),
+      videoRecordingResolutionDivisor: _stringToNullableInt(
+          const String.fromEnvironment(
+              'CONVENIENT_TEST_VIDEO_RESOLUTION_DIVISOR')),
       enableReportSaver: _stringToNullableBool(
           const String.fromEnvironment('CONVENIENT_TEST_ENABLE_REPORT_SAVER')),
       retryMode: _stringToNullableBool(
@@ -135,6 +148,8 @@ sealed class GlobalConfigNullable with _$GlobalConfigNullable {
     final results = (ArgParser()
           ..addFlag('isolation-mode', defaultsTo: null)
           ..addFlag('enable-video-recording', defaultsTo: null)
+          ..addOption('video-recording-fps', defaultsTo: null)
+          ..addOption('video-recording-resolution-divisor', defaultsTo: null)
           ..addFlag('enable-report-saver', defaultsTo: null)
           ..addFlag('retry-mode', defaultsTo: null)
           ..addOption('run-only', defaultsTo: null)
@@ -145,6 +160,11 @@ sealed class GlobalConfigNullable with _$GlobalConfigNullable {
     return GlobalConfigNullable(
       isolationMode: results['isolation-mode'] as bool?,
       enableVideoRecording: results['enable-video-recording'] as bool?,
+      videoRecordingFps: int.tryParse(
+          (results['video-recording-fps'] as String?)?.trim() ?? ''),
+      videoRecordingResolutionDivisor: int.tryParse(
+          (results['video-recording-resolution-divisor'] as String?)?.trim() ??
+              ''),
       enableReportSaver: results['enable-report-saver'] as bool?,
       retryMode: results['retry-mode'] as bool?,
       goldenDiffGitRepo: results['golden-diff-git-repo'] as String?,
@@ -169,6 +189,10 @@ extension ExtGlobalConfigNullable on GlobalConfigNullable {
         isolationMode: other.isolationMode ?? isolationMode,
         enableVideoRecording:
             other.enableVideoRecording ?? enableVideoRecording,
+        videoRecordingFps: other.videoRecordingFps ?? videoRecordingFps,
+        videoRecordingResolutionDivisor:
+            other.videoRecordingResolutionDivisor ??
+                videoRecordingResolutionDivisor,
         enableReportSaver: other.enableReportSaver ?? enableReportSaver,
         retryMode: other.retryMode ?? retryMode,
         goldenDiffGitRepo: other.goldenDiffGitRepo ?? goldenDiffGitRepo,
@@ -179,6 +203,9 @@ extension ExtGlobalConfigNullable on GlobalConfigNullable {
   GlobalConfig toConfig() => GlobalConfig(
         isolationMode: isolationMode ?? false,
         enableVideoRecording: enableVideoRecording ?? true,
+        videoRecordingFps: (videoRecordingFps ?? 10).clamp(5, 30),
+        videoRecordingResolutionDivisor:
+            (videoRecordingResolutionDivisor ?? 2).clamp(1, 4),
         enableReportSaver: enableReportSaver ?? false,
         retryMode: retryMode ?? true,
         goldenDiffGitRepo: goldenDiffGitRepo,
@@ -191,6 +218,11 @@ bool? _stringToNullableBool(String s) {
   if (s.toLowerCase() == 'true') return true;
   if (s.toLowerCase() == 'false') return false;
   return null;
+}
+
+int? _stringToNullableInt(String s) {
+  if (s.isEmpty) return null;
+  return int.tryParse(s.trim());
 }
 
 String? _emptyToNull(String s) => s.isEmpty ? null : s;

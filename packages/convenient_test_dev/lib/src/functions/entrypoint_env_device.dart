@@ -209,27 +209,35 @@ Future<void> _firstSetUpAll() async {
     return;
   }
 
-  final enableVideoRecording = () async {
+  final integrationConfig = () async {
     try {
       final currentRunConfig = await myGetIt
           .get<ConvenientTestManagerRpcService>()
           .getWorkerCurrentRunConfig();
       if (currentRunConfig.whichSubType() !=
           WorkerCurrentRunConfig_SubType.integrationTest) {
-        return true;
+        return null;
       }
-      return currentRunConfig.integrationTest.enableVideoRecording;
+      return currentRunConfig.integrationTest;
     } catch (e, s) {
       Log.w(
         kTag,
-        'cannot resolve enableVideoRecording from manager '
-        'fallback=true e=$e s=$s',
+        'cannot resolve integration config from manager '
+        'fallback-to-defaults e=$e s=$s',
       );
-      return true;
+      return null;
     }
   }();
 
-  final enabled = await enableVideoRecording;
+  final config = await integrationConfig;
+  if (config != null) {
+    videoRecorderService.configureQuality(
+      fps: config.videoRecordingFps,
+      resolutionDivisor: config.videoRecordingResolutionDivisor,
+    );
+  }
+
+  final enabled = config?.enableVideoRecording ?? true;
   videoRecorderService.setEnabled(enabled);
   if (!enabled) {
     Log.i(

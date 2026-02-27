@@ -32,6 +32,17 @@ abstract class _WorkerSuperRunStore with Store {
   set enableVideoRecording(bool val) =>
       GlobalConfigStore.config.enableVideoRecording = val;
 
+  int get videoRecordingFps => GlobalConfigStore.config.videoRecordingFps;
+
+  set videoRecordingFps(int val) =>
+      GlobalConfigStore.config.videoRecordingFps = val;
+
+  int get videoRecordingResolutionDivisor =>
+      GlobalConfigStore.config.videoRecordingResolutionDivisor;
+
+  set videoRecordingResolutionDivisor(int val) =>
+      GlobalConfigStore.config.videoRecordingResolutionDivisor = val;
+
   @observable
   var flakyTestTotalAttemptCount = 2;
 
@@ -81,6 +92,13 @@ abstract class _WorkerSuperRunStore with Store {
         throw AssertionError;
       }
       if (config.integrationTest.enableVideoRecording != enableVideoRecording) {
+        throw AssertionError;
+      }
+      if (config.integrationTest.videoRecordingFps != videoRecordingFps) {
+        throw AssertionError;
+      }
+      if (config.integrationTest.videoRecordingResolutionDivisor !=
+          videoRecordingResolutionDivisor) {
         throw AssertionError;
       }
     }
@@ -147,6 +165,11 @@ class _WorkerSuperRunControllerHalt extends WorkerSuperRunController {
               GetIt.I.get<WorkerSuperRunStore>().autoUpdateGoldenFiles,
           enableVideoRecording:
               GetIt.I.get<WorkerSuperRunStore>().enableVideoRecording,
+          videoRecordingFps:
+              GetIt.I.get<WorkerSuperRunStore>().videoRecordingFps,
+          videoRecordingResolutionDivisor: GetIt.I
+              .get<WorkerSuperRunStore>()
+              .videoRecordingResolutionDivisor,
         ),
       );
 
@@ -214,6 +237,9 @@ abstract class __WorkerSuperRunControllerIntegrationTestClassicalMode
             GetIt.I.get<WorkerSuperRunStore>().autoUpdateGoldenFiles,
         enableVideoRecording:
             GetIt.I.get<WorkerSuperRunStore>().enableVideoRecording,
+        videoRecordingFps: GetIt.I.get<WorkerSuperRunStore>().videoRecordingFps,
+        videoRecordingResolutionDivisor:
+            GetIt.I.get<WorkerSuperRunStore>().videoRecordingResolutionDivisor,
       ),
     );
   }
@@ -264,6 +290,9 @@ abstract class __WorkerSuperRunControllerIntegrationTestIsolationMode
             GetIt.I.get<WorkerSuperRunStore>().autoUpdateGoldenFiles,
         enableVideoRecording:
             GetIt.I.get<WorkerSuperRunStore>().enableVideoRecording,
+        videoRecordingFps: GetIt.I.get<WorkerSuperRunStore>().videoRecordingFps,
+        videoRecordingResolutionDivisor:
+            GetIt.I.get<WorkerSuperRunStore>().videoRecordingResolutionDivisor,
       ),
     );
   }

@@ -22,6 +22,9 @@ GlobalConfigNullable _$GlobalConfigNullableFromJson(Map<String, dynamic> json) {
 mixin _$GlobalConfigNullable {
   bool? get isolationMode => throw _privateConstructorUsedError;
   bool? get enableVideoRecording => throw _privateConstructorUsedError;
+  int? get videoRecordingFps => throw _privateConstructorUsedError;
+  int? get videoRecordingResolutionDivisor =>
+      throw _privateConstructorUsedError;
   bool? get enableReportSaver => throw _privateConstructorUsedError;
   bool? get retryMode => throw _privateConstructorUsedError;
   String? get goldenDiffGitRepo => throw _privateConstructorUsedError;
@@ -47,6 +50,8 @@ abstract class $GlobalConfigNullableCopyWith<$Res> {
   $Res call(
       {bool? isolationMode,
       bool? enableVideoRecording,
+      int? videoRecordingFps,
+      int? videoRecordingResolutionDivisor,
       bool? enableReportSaver,
       bool? retryMode,
       String? goldenDiffGitRepo,
@@ -72,6 +77,8 @@ class _$GlobalConfigNullableCopyWithImpl<$Res,
   $Res call({
     Object? isolationMode = freezed,
     Object? enableVideoRecording = freezed,
+    Object? videoRecordingFps = freezed,
+    Object? videoRecordingResolutionDivisor = freezed,
     Object? enableReportSaver = freezed,
     Object? retryMode = freezed,
     Object? goldenDiffGitRepo = freezed,
@@ -87,6 +94,15 @@ class _$GlobalConfigNullableCopyWithImpl<$Res,
           ? _value.enableVideoRecording
           : enableVideoRecording // ignore: cast_nullable_to_non_nullable
               as bool?,
+      videoRecordingFps: freezed == videoRecordingFps
+          ? _value.videoRecordingFps
+          : videoRecordingFps // ignore: cast_nullable_to_non_nullable
+              as int?,
+      videoRecordingResolutionDivisor: freezed ==
+              videoRecordingResolutionDivisor
+          ? _value.videoRecordingResolutionDivisor
+          : videoRecordingResolutionDivisor // ignore: cast_nullable_to_non_nullable
+              as int?,
       enableReportSaver: freezed == enableReportSaver
           ? _value.enableReportSaver
           : enableReportSaver // ignore: cast_nullable_to_non_nullable
@@ -122,6 +138,8 @@ abstract class _$$GlobalConfigNullableImplCopyWith<$Res>
   $Res call(
       {bool? isolationMode,
       bool? enableVideoRecording,
+      int? videoRecordingFps,
+      int? videoRecordingResolutionDivisor,
       bool? enableReportSaver,
       bool? retryMode,
       String? goldenDiffGitRepo,
@@ -144,6 +162,8 @@ class __$$GlobalConfigNullableImplCopyWithImpl<$Res>
   $Res call({
     Object? isolationMode = freezed,
     Object? enableVideoRecording = freezed,
+    Object? videoRecordingFps = freezed,
+    Object? videoRecordingResolutionDivisor = freezed,
     Object? enableReportSaver = freezed,
     Object? retryMode = freezed,
     Object? goldenDiffGitRepo = freezed,
@@ -159,6 +179,15 @@ class __$$GlobalConfigNullableImplCopyWithImpl<$Res>
           ? _value.enableVideoRecording
           : enableVideoRecording // ignore: cast_nullable_to_non_nullable
               as bool?,
+      videoRecordingFps: freezed == videoRecordingFps
+          ? _value.videoRecordingFps
+          : videoRecordingFps // ignore: cast_nullable_to_non_nullable
+              as int?,
+      videoRecordingResolutionDivisor: freezed ==
+              videoRecordingResolutionDivisor
+          ? _value.videoRecordingResolutionDivisor
+          : videoRecordingResolutionDivisor // ignore: cast_nullable_to_non_nullable
+              as int?,
       enableReportSaver: freezed == enableReportSaver
           ? _value.enableReportSaver
           : enableReportSaver // ignore: cast_nullable_to_non_nullable
@@ -189,6 +218,8 @@ class _$GlobalConfigNullableImpl implements _GlobalConfigNullable {
   _$GlobalConfigNullableImpl(
       {this.isolationMode,
       this.enableVideoRecording,
+      this.videoRecordingFps,
+      this.videoRecordingResolutionDivisor,
       this.enableReportSaver,
       this.retryMode,
       this.goldenDiffGitRepo,
@@ -203,6 +234,10 @@ class _$GlobalConfigNullableImpl implements _GlobalConfigNullable {
   @override
   final bool? enableVideoRecording;
   @override
+  final int? videoRecordingFps;
+  @override
+  final int? videoRecordingResolutionDivisor;
+  @override
   final bool? enableReportSaver;
   @override
   final bool? retryMode;
@@ -215,7 +250,7 @@ class _$GlobalConfigNullableImpl implements _GlobalConfigNullable {
 
   @override
   String toString() {
-    return 'GlobalConfigNullable(isolationMode: $isolationMode, enableVideoRecording: $enableVideoRecording, enableReportSaver: $enableReportSaver, retryMode: $retryMode, goldenDiffGitRepo: $goldenDiffGitRepo, runOnly: $runOnly, reportSavePath: $reportSavePath)';
+    return 'GlobalConfigNullable(isolationMode: $isolationMode, enableVideoRecording: $enableVideoRecording, videoRecordingFps: $videoRecordingFps, videoRecordingResolutionDivisor: $videoRecordingResolutionDivisor, enableReportSaver: $enableReportSaver, retryMode: $retryMode, goldenDiffGitRepo: $goldenDiffGitRepo, runOnly: $runOnly, reportSavePath: $reportSavePath)';
   }
 
   @override
@@ -227,6 +262,12 @@ class _$GlobalConfigNullableImpl implements _GlobalConfigNullable {
                 other.isolationMode == isolationMode) &&
             (identical(other.enableVideoRecording, enableVideoRecording) ||
                 other.enableVideoRecording == enableVideoRecording) &&
+            (identical(other.videoRecordingFps, videoRecordingFps) ||
+                other.videoRecordingFps == videoRecordingFps) &&
+            (identical(other.videoRecordingResolutionDivisor,
+                    videoRecordingResolutionDivisor) ||
+                other.videoRecordingResolutionDivisor ==
+                    videoRecordingResolutionDivisor) &&
             (identical(other.enableReportSaver, enableReportSaver) ||
                 other.enableReportSaver == enableReportSaver) &&
             (identical(other.retryMode, retryMode) ||
@@ -244,6 +285,8 @@ class _$GlobalConfigNullableImpl implements _GlobalConfigNullable {
       runtimeType,
       isolationMode,
       enableVideoRecording,
+      videoRecordingFps,
+      videoRecordingResolutionDivisor,
       enableReportSaver,
       retryMode,
       goldenDiffGitRepo,
@@ -272,6 +315,8 @@ abstract class _GlobalConfigNullable implements GlobalConfigNullable {
   factory _GlobalConfigNullable(
       {final bool? isolationMode,
       final bool? enableVideoRecording,
+      final int? videoRecordingFps,
+      final int? videoRecordingResolutionDivisor,
       final bool? enableReportSaver,
       final bool? retryMode,
       final String? goldenDiffGitRepo,
@@ -285,6 +330,10 @@ abstract class _GlobalConfigNullable implements GlobalConfigNullable {
   bool? get isolationMode;
   @override
   bool? get enableVideoRecording;
+  @override
+  int? get videoRecordingFps;
+  @override
+  int? get videoRecordingResolutionDivisor;
   @override
   bool? get enableReportSaver;
   @override

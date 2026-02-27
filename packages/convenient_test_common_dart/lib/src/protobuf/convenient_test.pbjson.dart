@@ -400,6 +400,20 @@ const WorkerCurrentRunConfig_IntegrationTest$json = const {
       '5': 8,
       '10': 'enableVideoRecording'
     },
+    const {
+      '1': 'video_recording_fps',
+      '3': 6,
+      '4': 1,
+      '5': 5,
+      '10': 'videoRecordingFps'
+    },
+    const {
+      '1': 'video_recording_resolution_divisor',
+      '3': 7,
+      '4': 1,
+      '5': 5,
+      '10': 'videoRecordingResolutionDivisor'
+    },
   ],
 };
 

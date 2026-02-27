@@ -11,6 +11,9 @@ _$GlobalConfigNullableImpl _$$GlobalConfigNullableImplFromJson(
     _$GlobalConfigNullableImpl(
       isolationMode: json['isolationMode'] as bool?,
       enableVideoRecording: json['enableVideoRecording'] as bool?,
+      videoRecordingFps: (json['videoRecordingFps'] as num?)?.toInt(),
+      videoRecordingResolutionDivisor:
+          (json['videoRecordingResolutionDivisor'] as num?)?.toInt(),
       enableReportSaver: json['enableReportSaver'] as bool?,
       retryMode: json['retryMode'] as bool?,
       goldenDiffGitRepo: json['goldenDiffGitRepo'] as String?,
@@ -23,6 +26,9 @@ Map<String, dynamic> _$$GlobalConfigNullableImplToJson(
     <String, dynamic>{
       'isolationMode': instance.isolationMode,
       'enableVideoRecording': instance.enableVideoRecording,
+      'videoRecordingFps': instance.videoRecordingFps,
+      'videoRecordingResolutionDivisor':
+          instance.videoRecordingResolutionDivisor,
       'enableReportSaver': instance.enableReportSaver,
       'retryMode': instance.retryMode,
       'goldenDiffGitRepo': instance.goldenDiffGitRepo,

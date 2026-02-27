@@ -18,6 +18,8 @@ class WorkerVideoRecordingService {
   static const _kMinimumDurationToKeep = Duration(milliseconds: 300);
   static const _kMinimumSizeBytesToKeep = 4 * 1024;
   bool _enabled = true;
+  int? _configuredFps;
+  int? _configuredResolutionDivisor;
 
   // ignore: prefer_constructors_over_static_methods
   static WorkerVideoRecordingService create() {
@@ -53,6 +55,23 @@ class WorkerVideoRecordingService {
     _enabled = value;
     Log.i(_kTag, 'setEnabled value=$value');
   }
+
+  void configureQuality({
+    required int? fps,
+    required int? resolutionDivisor,
+  }) {
+    _configuredFps = fps;
+    _configuredResolutionDivisor = resolutionDivisor;
+    Log.i(
+      _kTag,
+      'configureQuality fps=$_configuredFps '
+      'resolutionDivisor=$_configuredResolutionDivisor',
+    );
+  }
+
+  int? get configuredFps => _configuredFps;
+
+  int? get configuredResolutionDivisor => _configuredResolutionDivisor;
 }
 
 abstract class _WorkerVideoRecordingServiceDesktopBase
@@ -250,14 +269,19 @@ abstract class _WorkerVideoRecordingServiceRecasterBase
   static const _kStartTimeout = Duration(seconds: 10);
   static const _kStopTimeout = Duration(seconds: 15);
   static const _kIsRecordingTimeout = Duration(seconds: 2);
+  static const _kDefaultFps = 10;
+  static const _kDefaultResolutionDivisor = 2;
+  static const _kEnvVideoFps = 'CONVENIENT_TEST_VIDEO_FPS';
+  static const _kEnvVideoResolutionDivisor =
+      'CONVENIENT_TEST_VIDEO_RESOLUTION_DIVISOR';
   final Recaster _recaster = Recaster();
   DateTime? _startTime;
   String? _targetPath;
 
   String get tag;
   String get fileExtension;
-  int get fps => 8;
-  int get resolutionDivisor => 1;
+  int get fps => _resolveVideoFps();
+  int get resolutionDivisor => _resolveVideoResolutionDivisor();
 
   @override
   Future<void> startRecord() async {
@@ -274,16 +298,20 @@ abstract class _WorkerVideoRecordingServiceRecasterBase
       Log.i(tag, 'recaster.start begin');
       await forceStopDanglingProcesses();
       final targetPath = await _createTargetPath();
-      await _recaster.startRecording(
-        outputPath: targetPath,
-        fps: fps,
-        resolutionDivisor: resolutionDivisor,
-      ).timeout(_kStartTimeout);
+      await _recaster
+          .startRecording(
+            outputPath: targetPath,
+            fps: fps,
+            resolutionDivisor: resolutionDivisor,
+          )
+          .timeout(_kStartTimeout);
       _startTime = DateTime.now();
       _targetPath = targetPath;
       Log.i(
         tag,
-        'recaster.start success targetPath=$targetPath elapsedMs=${sw.elapsedMilliseconds}',
+        'recaster.start success targetPath=$targetPath fps=$fps '
+        'resolutionDivisor=$resolutionDivisor '
+        'elapsedMs=${sw.elapsedMilliseconds}',
       );
     } on TimeoutException catch (e, s) {
       Log.w(tag, 'recaster.start timeout e=$e s=$s');
@@ -306,7 +334,8 @@ abstract class _WorkerVideoRecordingServiceRecasterBase
 
     try {
       Log.w(tag, 'recaster.forceStop begin');
-      final stoppedPath = await _recaster.stopRecording().timeout(_kStopTimeout);
+      final stoppedPath =
+          await _recaster.stopRecording().timeout(_kStopTimeout);
       final file = File((stoppedPath ?? '').trim());
       if (await file.exists()) {
         await file.delete();
@@ -342,7 +371,8 @@ abstract class _WorkerVideoRecordingServiceRecasterBase
       final savedPath = await _recaster.stopRecording().timeout(_kStopTimeout);
       final candidatePath = (savedPath ?? '').trim();
       final pathToUse = candidatePath.isEmpty ? targetPath : candidatePath;
-      Log.i(tag, 'recaster.stop success savedPath=$savedPath pathToUse=$pathToUse');
+      Log.i(tag,
+          'recaster.stop success savedPath=$savedPath pathToUse=$pathToUse');
       final file = File(pathToUse);
       if (!await _shouldKeepVideo(
         file,
@@ -373,6 +403,24 @@ abstract class _WorkerVideoRecordingServiceRecasterBase
   String _shortError(Object e) {
     final text = e.toString().replaceAll('\n', ' ').trim();
     return text.length > 400 ? '${text.substring(0, 400)}...' : text;
+  }
+
+  int _resolveVideoFps() {
+    final configured = configuredFps;
+    if (configured != null) return configured.clamp(5, 30);
+    final raw = Platform.environment[_kEnvVideoFps];
+    final parsed = raw == null ? null : int.tryParse(raw.trim());
+    if (parsed == null) return _kDefaultFps;
+    return parsed.clamp(5, 30);
+  }
+
+  int _resolveVideoResolutionDivisor() {
+    final configured = configuredResolutionDivisor;
+    if (configured != null) return configured.clamp(1, 4);
+    final raw = Platform.environment[_kEnvVideoResolutionDivisor];
+    final parsed = raw == null ? null : int.tryParse(raw.trim());
+    if (parsed == null) return _kDefaultResolutionDivisor;
+    return parsed.clamp(1, 4);
   }
 
   Future<bool> _shouldKeepVideo(
@@ -511,9 +559,8 @@ class _WorkerVideoRecordingServiceLinux
   Future<Process> startProcess(String targetPath) async {
     final display = Platform.environment['DISPLAY'] ?? ':0';
     final windowId = _resolveLinuxWindowIdByCurrentPid();
-    final contentRect = windowId == null
-        ? null
-        : _resolveLinuxContentRectByWindowId(windowId);
+    final contentRect =
+        windowId == null ? null : _resolveLinuxContentRectByWindowId(windowId);
 
     final args = <String>[
       '-y',
@@ -662,7 +709,9 @@ _CaptureRect? _resolveLinuxContentRectByWindowId(String windowId) {
   final y = absY + safeRelY;
   final w = width - safeRelX;
   final h = height - safeRelY;
-  if (w <= 0 || h <= 0) return _CaptureRect(x: absX, y: absY, width: width, height: height);
+  if (w <= 0 || h <= 0) {
+    return _CaptureRect(x: absX, y: absY, width: width, height: height);
+  }
 
   return _CaptureRect(x: x, y: y, width: w, height: h);
 }
@@ -675,8 +724,8 @@ _LinuxFrameExtents? _resolveLinuxFrameExtents(String windowId) {
   if (result.exitCode != 0) return null;
 
   final text = (result.stdout as String).trim();
-  final match = RegExp(r'=\s*(-?\d+),\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)')
-      .firstMatch(text);
+  final match =
+      RegExp(r'=\s*(-?\d+),\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)').firstMatch(text);
   if (match == null) return null;
 
   final left = int.tryParse(match.group(1)!);

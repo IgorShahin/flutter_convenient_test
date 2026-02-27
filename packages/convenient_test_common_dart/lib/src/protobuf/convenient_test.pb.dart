@@ -1578,6 +1578,18 @@ class WorkerCurrentRunConfig_IntegrationTest extends $pb.GeneratedMessage {
         const $core.bool.fromEnvironment('protobuf.omit_field_names')
             ? ''
             : 'enableVideoRecording')
+    ..a<$core.int>(
+        6,
+        const $core.bool.fromEnvironment('protobuf.omit_field_names')
+            ? ''
+            : 'videoRecordingFps',
+        $pb.PbFieldType.O3)
+    ..a<$core.int>(
+        7,
+        const $core.bool.fromEnvironment('protobuf.omit_field_names')
+            ? ''
+            : 'videoRecordingResolutionDivisor',
+        $pb.PbFieldType.O3)
     ..hasRequiredFields = false;
 
   WorkerCurrentRunConfig_IntegrationTest._() : super();
@@ -1587,6 +1599,8 @@ class WorkerCurrentRunConfig_IntegrationTest extends $pb.GeneratedMessage {
     $core.int? defaultRetryCount,
     $core.bool? autoUpdateGoldenFiles,
     $core.bool? enableVideoRecording,
+    $core.int? videoRecordingFps,
+    $core.int? videoRecordingResolutionDivisor,
   }) {
     final _result = create();
     if (reportSuiteInfo != null) {
@@ -1603,6 +1617,12 @@ class WorkerCurrentRunConfig_IntegrationTest extends $pb.GeneratedMessage {
     }
     if (enableVideoRecording != null) {
       _result.enableVideoRecording = enableVideoRecording;
+    }
+    if (videoRecordingFps != null) {
+      _result.videoRecordingFps = videoRecordingFps;
+    }
+    if (videoRecordingResolutionDivisor != null) {
+      _result.videoRecordingResolutionDivisor = videoRecordingResolutionDivisor;
     }
     return _result;
   }
@@ -1700,6 +1720,30 @@ class WorkerCurrentRunConfig_IntegrationTest extends $pb.GeneratedMessage {
   $core.bool hasEnableVideoRecording() => $_has(4);
   @$pb.TagNumber(5)
   void clearEnableVideoRecording() => clearField(5);
+
+  @$pb.TagNumber(6)
+  $core.int get videoRecordingFps => $_getIZ(5);
+  @$pb.TagNumber(6)
+  set videoRecordingFps($core.int v) {
+    $_setSignedInt32(5, v);
+  }
+
+  @$pb.TagNumber(6)
+  $core.bool hasVideoRecordingFps() => $_has(5);
+  @$pb.TagNumber(6)
+  void clearVideoRecordingFps() => clearField(6);
+
+  @$pb.TagNumber(7)
+  $core.int get videoRecordingResolutionDivisor => $_getIZ(6);
+  @$pb.TagNumber(7)
+  set videoRecordingResolutionDivisor($core.int v) {
+    $_setSignedInt32(6, v);
+  }
+
+  @$pb.TagNumber(7)
+  $core.bool hasVideoRecordingResolutionDivisor() => $_has(6);
+  @$pb.TagNumber(7)
+  void clearVideoRecordingResolutionDivisor() => clearField(7);
 }
 
 enum WorkerCurrentRunConfig_SubType { interactiveApp, integrationTest, notSet }

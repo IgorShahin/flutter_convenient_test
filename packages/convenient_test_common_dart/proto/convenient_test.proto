@@ -120,6 +120,8 @@ message WorkerCurrentRunConfig {
     ExecutionFilter execution_filter = 2;
     bool auto_update_golden_files = 4;
     bool enable_video_recording = 5;
+    int32 video_recording_fps = 6;
+    int32 video_recording_resolution_divisor = 7;
   }
 }
 
