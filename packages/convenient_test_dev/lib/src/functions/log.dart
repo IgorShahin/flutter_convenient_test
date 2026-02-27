@@ -1,6 +1,7 @@
 // ref: https://docs.cypress.io/api/cypress-api/cypress-log#Arguments
 
 // ignore_for_file: implementation_imports
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:convenient_test_common/convenient_test_common.dart';
@@ -47,15 +48,14 @@ LogHandle convenientTestLog(
   return log;
 }
 
-typedef LogUpdate =
-    void Function(
-      String title,
-      String message, {
-      String? error,
-      String? stackTrace,
-      required LogSubEntryType type,
-      bool printing,
-    });
+typedef LogUpdate = void Function(
+  String title,
+  String message, {
+  String? error,
+  String? stackTrace,
+  required LogSubEntryType type,
+  bool printing,
+});
 typedef LogSnapshot = Future<void> Function({String name, List<int>? image});
 
 class LogHandle {
@@ -196,4 +196,142 @@ void setUpLogTestStartAndEnd() {
   tearDown(() {
     convenientTestLog('END', '', type: LogSubEntryType.TEST_END);
   });
+}
+
+const _kDefaultSensitiveKeys = <String>{
+  'authorization',
+  'proxy-authorization',
+  'x-token',
+  'x-api-key',
+  'api-key',
+  'access_token',
+  'refresh_token',
+  'token',
+  'password',
+  'passwd',
+  'secret',
+  'cookie',
+  'set-cookie',
+};
+
+class HttpLogOptions {
+  final bool enabled;
+  final bool includeHeaders;
+  final bool includeBody;
+  final int maxBodyChars;
+  final Set<String> sensitiveKeys;
+
+  const HttpLogOptions({
+    this.enabled = true,
+    this.includeHeaders = true,
+    this.includeBody = true,
+    this.maxBodyChars = 8000,
+    this.sensitiveKeys = _kDefaultSensitiveKeys,
+  });
+}
+
+Future<void> convenientTestLogHttpRequest({
+  required String method,
+  required String path,
+  int? requestId,
+  Object? headers,
+  Object? body,
+  HttpLogOptions options = const HttpLogOptions(),
+}) async {
+  if (!options.enabled) return;
+  final idPart = requestId == null ? '' : ' #$requestId';
+  final log = convenientTestLog('HTTP$idPart ➡️  $method $path', '');
+  final message = _buildHttpMessage(
+    headers: headers,
+    body: body,
+    options: options,
+  );
+  if (message.isNotEmpty) {
+    await log.update('HTTP$idPart body', message);
+  }
+}
+
+Future<void> convenientTestLogHttpResponse({
+  required String method,
+  required String path,
+  required int statusCode,
+  int? requestId,
+  Duration? latency,
+  Object? headers,
+  Object? body,
+  HttpLogOptions options = const HttpLogOptions(),
+}) async {
+  if (!options.enabled) return;
+  final idPart = requestId == null ? '' : ' #$requestId';
+  final latencyPart = latency == null ? '' : ' (${latency.inMilliseconds}ms)';
+  final log = convenientTestLog(
+    'HTTP$idPart ⬅️  $statusCode $method $path$latencyPart',
+    '',
+  );
+  final message = _buildHttpMessage(
+    headers: headers,
+    body: body,
+    options: options,
+  );
+  if (message.isNotEmpty) {
+    await log.update('HTTP$idPart resp', message);
+  }
+}
+
+String _buildHttpMessage({
+  required Object? headers,
+  required Object? body,
+  required HttpLogOptions options,
+}) {
+  final chunks = <String>[];
+  if (options.includeHeaders && headers != null) {
+    chunks.add('headers: ${_stringifyMasked(headers, options)}');
+  }
+  if (options.includeBody && body != null) {
+    chunks.add('body: ${_stringifyMasked(body, options)}');
+  }
+  return chunks.join('\n');
+}
+
+String _stringifyMasked(Object value, HttpLogOptions options) {
+  final masked = _maskSensitive(value, options.sensitiveKeys);
+  String text;
+  try {
+    if (masked is String) {
+      text = masked;
+    } else {
+      text = const JsonEncoder.withIndent('  ').convert(masked);
+    }
+  } catch (_) {
+    text = masked.toString();
+  }
+  if (text.length <= options.maxBodyChars) return text;
+  return '${text.substring(0, options.maxBodyChars)}...<truncated>';
+}
+
+Object _maskSensitive(Object? value, Set<String> sensitiveKeys) {
+  if (value == null) return 'null';
+  if (value is Map) {
+    final out = <String, Object?>{};
+    value.forEach((k, v) {
+      final key = k.toString();
+      final lower = key.toLowerCase();
+      if (sensitiveKeys.contains(lower)) {
+        out[key] = '***';
+      } else {
+        out[key] = _maskSensitive(v, sensitiveKeys);
+      }
+    });
+    return out;
+  }
+  if (value is Iterable) {
+    return value.map((e) => _maskSensitive(e, sensitiveKeys)).toList();
+  }
+  if (value is String) {
+    if (value.length > 5 * 1024) {
+      return '${value.substring(0, 5 * 1024)}...<truncated>';
+    }
+    return value;
+  }
+  return value.toString();
 }
