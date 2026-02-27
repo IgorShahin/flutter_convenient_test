@@ -54,7 +54,22 @@ class RealVmServiceWrapperService extends VmServiceWrapperService {
   @override
   Future<void> hotRestartRaw() async {
     await _hotRestartActing.withPlusOneAsync(() async {
-      await _manager.performHotRestart();
+      if (!_manager.connected) {
+        Log.w(_kTag, 'hotRestartRaw skipped because VM service is disconnected');
+        return;
+      }
+      try {
+        await _manager.performHotRestart();
+      } on RPCError catch (e, s) {
+        // Worker may disconnect during shutdown/restart races. This should not
+        // crash manager UI or leave executor in an unhandled-error state.
+        Log.w(
+          _kTag,
+          'hotRestartRaw ignored RPCError code=${e.code} message=${e.message} e=$e s=$s',
+        );
+      } catch (e, s) {
+        Log.w(_kTag, 'hotRestartRaw failed e=$e s=$s');
+      }
     });
   }
 
@@ -129,7 +144,11 @@ abstract class _ServiceConnectionManager with Store {
     if (registered.isEmpty) {
       throw Exception('There are no registered methods for service "$name"');
     }
-    return service!.callMethod(
+    final currentService = service;
+    if (currentService == null) {
+      throw Exception('VM service is disconnected while calling "$name"');
+    }
+    return currentService.callMethod(
       registered.first,
       isolateId: isolateId,
       args: args,

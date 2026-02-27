@@ -220,6 +220,9 @@ abstract class _WorkerVideoRecordingServiceDesktopBase
 
 abstract class _WorkerVideoRecordingServiceRecasterBase
     extends WorkerVideoRecordingService {
+  static const _kStartTimeout = Duration(seconds: 10);
+  static const _kStopTimeout = Duration(seconds: 15);
+  static const _kIsRecordingTimeout = Duration(seconds: 2);
   final Recaster _recaster = Recaster();
   DateTime? _startTime;
   String? _targetPath;
@@ -231,19 +234,28 @@ abstract class _WorkerVideoRecordingServiceRecasterBase
 
   @override
   Future<void> startRecord() async {
+    final sw = Stopwatch()..start();
     try {
+      Log.i(tag, 'recaster.start begin');
       await forceStopDanglingProcesses();
       final targetPath = await _createTargetPath();
       await _recaster.startRecording(
         outputPath: targetPath,
         fps: fps,
         resolutionDivisor: resolutionDivisor,
-      );
+      ).timeout(_kStartTimeout);
       _startTime = DateTime.now();
       _targetPath = targetPath;
-      Log.i(tag, 'startRecord via recaster targetPath=$targetPath');
+      Log.i(
+        tag,
+        'recaster.start success targetPath=$targetPath elapsedMs=${sw.elapsedMilliseconds}',
+      );
+    } on TimeoutException catch (e, s) {
+      Log.w(tag, 'recaster.start timeout e=$e s=$s');
+      _startTime = null;
+      _targetPath = null;
     } catch (e, s) {
-      Log.w(tag, 'startRecord failed e=$e s=$s');
+      Log.w(tag, 'recaster.start failed e=${_shortError(e)} s=$s');
       _startTime = null;
       _targetPath = null;
     }
@@ -251,18 +263,24 @@ abstract class _WorkerVideoRecordingServiceRecasterBase
 
   @override
   Future<void> forceStopDanglingProcesses() async {
-    final isRecording = await _recaster.isRecording().catchError((_) => false);
+    final isRecording = await _recaster.isRecording().timeout(
+          _kIsRecordingTimeout,
+          onTimeout: () => false,
+        );
     if (isRecording != true) return;
 
     try {
-      final stoppedPath = await _recaster.stopRecording();
+      Log.w(tag, 'recaster.forceStop begin');
+      final stoppedPath = await _recaster.stopRecording().timeout(_kStopTimeout);
       final file = File((stoppedPath ?? '').trim());
       if (await file.exists()) {
         await file.delete();
       }
-      Log.w(tag, 'force stopped dangling recaster recording');
+      Log.w(tag, 'recaster.forceStop success stoppedPath=$stoppedPath');
+    } on TimeoutException catch (e, s) {
+      Log.w(tag, 'recaster.forceStop timeout e=$e s=$s');
     } catch (e, s) {
-      Log.w(tag, 'forceStopDanglingProcesses failed e=$e s=$s');
+      Log.w(tag, 'recaster.forceStop failed e=${_shortError(e)} s=$s');
     }
   }
 
@@ -278,12 +296,14 @@ abstract class _WorkerVideoRecordingServiceRecasterBase
       return;
     }
 
+    final sw = Stopwatch()..start();
     final endTime = DateTime.now();
     try {
-      final savedPath = await _recaster.stopRecording();
+      Log.i(tag, 'recaster.stop begin targetPath=$targetPath');
+      final savedPath = await _recaster.stopRecording().timeout(_kStopTimeout);
       final candidatePath = (savedPath ?? '').trim();
-      final pathToUse =
-          candidatePath.isEmpty ? targetPath : candidatePath;
+      final pathToUse = candidatePath.isEmpty ? targetPath : candidatePath;
+      Log.i(tag, 'recaster.stop success savedPath=$savedPath pathToUse=$pathToUse');
       final file = File(pathToUse);
       if (!await _shouldKeepVideo(
         file,
@@ -293,17 +313,27 @@ abstract class _WorkerVideoRecordingServiceRecasterBase
         return;
       }
 
+      Log.i(tag, 'recaster.upload begin path=$pathToUse');
       await _uploadInChunks(
         reporterService,
         file: file,
         startTime: startTime,
         endTime: endTime,
       );
+      Log.i(tag, 'recaster.upload success elapsedMs=${sw.elapsedMilliseconds}');
       await _deleteFileQuietly(file);
+    } on TimeoutException catch (e, s) {
+      Log.w(tag, 'recaster.stopOrUpload timeout e=$e s=$s');
+      await _deleteFileQuietly(File(targetPath));
     } catch (e, s) {
-      Log.w(tag, 'stopAndUpload failed e=$e s=$s');
+      Log.w(tag, 'recaster.stopOrUpload failed e=${_shortError(e)} s=$s');
       await _deleteFileQuietly(File(targetPath));
     }
+  }
+
+  String _shortError(Object e) {
+    final text = e.toString().replaceAll('\n', ' ').trim();
+    return text.length > 400 ? '${text.substring(0, 400)}...' : text;
   }
 
   Future<bool> _shouldKeepVideo(

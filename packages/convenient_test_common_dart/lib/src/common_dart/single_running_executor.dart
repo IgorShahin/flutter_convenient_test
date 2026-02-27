@@ -29,6 +29,9 @@ class SingleRunningExecutor<Arg> {
             'call runner() reason=${pack.reason} triggerTime=${pack.triggerTime} arg=${pack.arg}');
         try {
           await _runner(pack.arg);
+        } catch (e, s) {
+          // Do not surface unhandled async errors from fire-and-forget runner.
+          Log.w(_kTag, 'runner failed e=$e s=$s');
         } finally {
           _running = false;
           if (_runAgainAfterCurrentRunFinish) {

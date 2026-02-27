@@ -153,9 +153,17 @@ Future<void> _lastTearDownAll() async {
 
   final reporterService = WorkerReportSaverService.I;
   if (reporterService != null) {
-    await myGetIt
-        .get<WorkerVideoRecordingService>()
-        .stopAndUpload(reporterService);
+    try {
+      await myGetIt
+          .get<WorkerVideoRecordingService>()
+          .stopAndUpload(reporterService)
+          .timeout(const Duration(seconds: 20));
+    } catch (e, s) {
+      Log.w(
+        'EntryPointEnvDevice',
+        'stopAndUpload timeout/fail in tearDownAll e=$e s=$s',
+      );
+    }
 
     // need to `await` to ensure it is sent
     await reporterService.report(
