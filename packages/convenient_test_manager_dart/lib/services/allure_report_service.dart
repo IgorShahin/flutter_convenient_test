@@ -207,17 +207,17 @@ class ManagerAllureReportService {
         return;
       }
 
-      final cleanUri = _buildApiUri(
-        settings.apiBaseUrl,
-        '/clean-results',
+      final cleaned = await _cleanRemoteResults(
+        apiBaseUrl: settings.apiBaseUrl,
         projectId: settings.projectId,
       );
-      final cleanStatus = await _httpGetStatus(cleanUri.toString());
-      if (cleanStatus != 404 && (cleanStatus < 200 || cleanStatus >= 300)) {
+      if (!cleaned) {
         Log.w(
           _kTag,
-          'auto-publish clean-results returned status=$cleanStatus uri=$cleanUri',
+          'auto-publish aborted: cannot clean remote results '
+          '(to avoid duplicated history/results)',
         );
+        return;
       }
 
       final sendStatus = await _sendResultsToAllureDocker(
@@ -1688,6 +1688,39 @@ class ManagerAllureReportService {
     } finally {
       client.close(force: true);
     }
+  }
+
+  Future<bool> _cleanRemoteResults({
+    required String apiBaseUrl,
+    required String projectId,
+  }) async {
+    final candidateUris = <Uri>[
+      _buildApiUri(
+        apiBaseUrl,
+        '/clean-results',
+        projectId: projectId,
+      ),
+      _buildApiUriWithProjectInPath(
+        apiBaseUrl,
+        projectId,
+        '/clean-results',
+      ),
+      _buildApiUriWithProjectInPath(
+        apiBaseUrl,
+        projectId,
+        '/results/clean',
+      ),
+    ];
+
+    for (final uri in candidateUris) {
+      final status = await _httpGetStatus(uri.toString());
+      if (status >= 200 && status < 300) {
+        Log.i(_kTag, 'clean-remote-results success status=$status uri=$uri');
+        return true;
+      }
+      Log.w(_kTag, 'clean-remote-results failed status=$status uri=$uri');
+    }
+    return false;
   }
 
   bool _autoPublishEnabled() {
