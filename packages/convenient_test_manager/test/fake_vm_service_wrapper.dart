@@ -2,6 +2,21 @@ import 'package:convenient_test_common/convenient_test_common.dart';
 import 'package:convenient_test_manager_dart/services/vm_service_wrapper_service.dart';
 
 class FakeVmServiceWrapper extends VmServiceWrapperService {
+  String _workerVmHost = '127.0.0.1';
+  int _workerVmPort = 9753;
+
+  @override
+  String get workerVmHost => _workerVmHost;
+
+  @override
+  int get workerVmPort => _workerVmPort;
+
+  @override
+  void setWorkerVmEndpoint({required String host, required int port}) {
+    _workerVmHost = host;
+    _workerVmPort = port;
+  }
+
   @override
   Future<void> connect() async {}
 

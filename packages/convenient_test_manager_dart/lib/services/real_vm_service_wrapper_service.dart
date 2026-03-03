@@ -17,6 +17,8 @@ class RealVmServiceWrapperService extends VmServiceWrapperService {
   static const _kTag = 'RealVmServiceWrapperService';
 
   final _manager = ServiceConnectionManager();
+  String _workerVmHost = kWorkerVmServiceHost;
+  int _workerVmPort = kWorkerVmServicePort;
 
   RealVmServiceWrapperService() {
     connect();
@@ -26,10 +28,25 @@ class RealVmServiceWrapperService extends VmServiceWrapperService {
   bool get connected => _manager.connected;
 
   @override
+  String get workerVmHost => _workerVmHost;
+
+  @override
+  int get workerVmPort => _workerVmPort;
+
+  @override
+  void setWorkerVmEndpoint({required String host, required int port}) {
+    final normalizedHost = host.trim();
+    if (normalizedHost.isEmpty) return;
+    _workerVmHost = normalizedHost;
+    _workerVmPort = port;
+    Log.i(_kTag, 'setWorkerVmEndpoint host=$_workerVmHost port=$_workerVmPort');
+  }
+
+  @override
   Future<void> connect() async {
-    const uri = 'ws://$kWorkerVmServiceHost:$kWorkerVmServicePort/ws';
+    final uri = 'ws://$_workerVmHost:$_workerVmPort/ws';
     Log.i(_kTag,
-        'Connecting to vm service at $uri. Please ensure your Flutter app has port=$kWorkerVmServicePort');
+        'Connecting to vm service at $uri. Please ensure your Flutter app has port=$_workerVmPort');
 
     try {
       final vmService = await vmServiceConnectUri(uri, log: _MyLog());
@@ -55,7 +72,8 @@ class RealVmServiceWrapperService extends VmServiceWrapperService {
   Future<void> hotRestartRaw() async {
     await _hotRestartActing.withPlusOneAsync(() async {
       if (!_manager.connected) {
-        Log.w(_kTag, 'hotRestartRaw skipped because VM service is disconnected');
+        Log.w(
+            _kTag, 'hotRestartRaw skipped because VM service is disconnected');
         return;
       }
       try {

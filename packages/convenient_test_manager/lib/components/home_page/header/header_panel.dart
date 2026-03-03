@@ -2,6 +2,7 @@ import 'package:convenient_test_common/convenient_test_common.dart';
 import 'package:convenient_test_manager/components/home_page/header/header_status_hint.dart';
 import 'package:convenient_test_manager/pages/golden_diff_page.dart';
 import 'package:convenient_test_manager/services/misc_flutter_service.dart';
+import 'package:convenient_test_manager/services/worker_vm_endpoint_history_service.dart';
 import 'package:convenient_test_manager/stores/highlight_store.dart';
 import 'package:convenient_test_manager/stores/home_page_store.dart';
 import 'package:convenient_test_manager_dart/misc/runtime_platform.dart';
@@ -85,6 +86,7 @@ class HomePageHeaderPanel extends StatelessWidget {
                 onPressed: GetIt.I.get<VmServiceWrapperService>().connect,
                 text: 'Reconnect VM',
               ),
+              const _WorkerEndpointButton(),
               _HeaderButton(
                 onPressed: miscFlutterService.pickFileAndReadReport,
                 text: 'Load Report',
@@ -242,6 +244,140 @@ class _HeaderButton extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _WorkerEndpointButton extends StatelessWidget {
+  const _WorkerEndpointButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return _HeaderButton(
+      onPressed: () => _showWorkerEndpointDialog(context),
+      text: 'Worker Endpoint',
+    );
+  }
+
+  Future<void> _showWorkerEndpointDialog(BuildContext context) async {
+    final vmService = GetIt.I.get<VmServiceWrapperService>();
+    final endpointHistoryService =
+        GetIt.I.get<WorkerVmEndpointHistoryService>();
+    final hostController = TextEditingController(text: vmService.workerVmHost);
+    final portController =
+        TextEditingController(text: '${vmService.workerVmPort}');
+    String? selectedEndpoint;
+    String? errorText;
+
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setState) {
+            final history = endpointHistoryService.history;
+            return AlertDialog(
+              title: const Text('Worker VM Endpoint'),
+              content: SizedBox(
+                width: 420,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (history.isNotEmpty) ...[
+                      DropdownButtonFormField<String>(
+                        value: selectedEndpoint,
+                        decoration: const InputDecoration(
+                          labelText: 'History',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: history
+                            .map(
+                              (e) => DropdownMenuItem<String>(
+                                value: e.displayName,
+                                child: Text(e.displayName),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          if (value == null) return;
+                          final selected = history.firstWhere(
+                            (e) => e.displayName == value,
+                          );
+                          hostController.text = selected.host;
+                          portController.text = '${selected.port}';
+                          setState(() {
+                            selectedEndpoint = value;
+                            errorText = null;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    TextField(
+                      controller: hostController,
+                      decoration: const InputDecoration(
+                        labelText: 'Host',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: portController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Port',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    if (errorText != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        errorText!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    final host = hostController.text.trim();
+                    final port = int.tryParse(portController.text.trim());
+                    if (host.isEmpty) {
+                      setState(() => errorText = 'Host is required');
+                      return;
+                    }
+                    if (port == null || port < 1 || port > 65535) {
+                      setState(() => errorText = 'Port must be 1..65535');
+                      return;
+                    }
+
+                    vmService.setWorkerVmEndpoint(host: host, port: port);
+                    await endpointHistoryService
+                        .remember(WorkerVmEndpoint(host: host, port: port));
+                    if (dialogContext.mounted) {
+                      Navigator.of(dialogContext).pop();
+                    }
+                    await vmService.connect();
+                  },
+                  child: const Text('Save & Reconnect'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    } finally {
+      hostController.dispose();
+      portController.dispose();
+    }
   }
 }
 
