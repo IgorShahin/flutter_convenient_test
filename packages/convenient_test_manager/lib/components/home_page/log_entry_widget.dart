@@ -269,6 +269,8 @@ class HomePageLogEntryWidget extends StatelessWidget {
 
   Widget _buildError(BuildContext context, LogSubEntry interestLogSubEntry) {
     final homePageStore = GetIt.I.get<HomePageStore>();
+    const kCollapsedErrorHeight = 100.0;
+    const kExpandedErrorHeight = 320.0;
 
     return Observer(builder: (_) {
       final expand = homePageStore.logEntryExpandErrorInfoMap[logEntryId];
@@ -287,22 +289,39 @@ class HomePageLogEntryWidget extends StatelessWidget {
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ConstrainedBox(
               constraints: BoxConstraints(
-                maxHeight: expand ? double.infinity : 100,
+                maxHeight:
+                    expand ? kExpandedErrorHeight : kCollapsedErrorHeight,
               ),
               child: SizedBox(
                 width: double.infinity,
-                child: EnhancedSelectableText(
-                  text,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontFamily: 'RobotoMono',
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
+                child: expand
+                    ? Scrollbar(
+                        thumbVisibility: true,
+                        child: SingleChildScrollView(
+                          primary: false,
+                          physics: const ClampingScrollPhysics(),
+                          child: EnhancedSelectableText(
+                            text,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontFamily: 'RobotoMono',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                      )
+                    : EnhancedSelectableText(
+                        text,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontFamily: 'RobotoMono',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
               ),
             ),
             Align(

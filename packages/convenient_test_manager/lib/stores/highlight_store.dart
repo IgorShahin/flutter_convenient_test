@@ -20,6 +20,8 @@ abstract class _HighlightStore extends HighlightStoreBase with Store {
   static const _kAutoJumpMinInterval = Duration(milliseconds: 220);
   static const _kAutoJumpDebounce = Duration(milliseconds: 80);
   static const _kSuppressAutoJumpDefault = Duration(milliseconds: 450);
+  static const _kAutoJumpTopAlignment = 0.02;
+  static const _kAutoJumpLowerAlignment = 0.22;
 
   @observable
   bool enableAutoExpand = true;
@@ -142,7 +144,9 @@ abstract class _HighlightStore extends HighlightStoreBase with Store {
     }
 
     final middleVisibleIndex = visibleIndices[visibleIndices.length ~/ 2];
-    final alignment = listViewIndexForHighlight < middleVisibleIndex ? .0 : .9;
+    final alignment = listViewIndexForHighlight < middleVisibleIndex
+        ? _kAutoJumpTopAlignment
+        : _kAutoJumpLowerAlignment;
     Log.d(_kTag,
         'jump to make index=$listViewIndexForHighlight at alignment=$alignment');
     _scheduleAutoJump(
