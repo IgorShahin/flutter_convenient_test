@@ -1,4 +1,3 @@
-export 'src/functions/chuck_interceptor.dart';
 export 'src/functions/command.dart';
 export 'src/functions/dio_interceptor.dart';
 export 'src/functions/entrypoint.dart';

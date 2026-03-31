@@ -8,7 +8,6 @@ environment:
   flutter: ">=3.27.0"
 
 dependencies:
-  chuck_interceptor: 2.2.1
   collection: '>=1.19.0 <1.20.0'
   convenient_test: ^1.0.0
   convenient_test_common: ^1.0.0
