@@ -1,4 +1,4 @@
-import 'package:chuck_interceptor/chuck_interceptor.dart';
+import 'package:chuck_interceptor/chuck.dart';
 import 'package:convenient_test_dev/src/functions/dio_interceptor.dart';
 import 'package:convenient_test_dev/src/functions/log.dart';
 import 'package:dio/dio.dart';
@@ -56,7 +56,7 @@ ConvenientTestChuckBundle createConvenientTestChuckBundle({
   final resolvedChuck = chuck ?? Chuck();
   return ConvenientTestChuckBundle(
     chuck: resolvedChuck,
-    chuckInterceptor: resolvedChuck.dioInterceptor,
+    chuckInterceptor: resolvedChuck.getDioInterceptor(),
     requestLogInterceptor:
         ConvenientTestDioInterceptor(options: httpLogOptions),
   );
