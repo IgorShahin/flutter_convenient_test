@@ -247,6 +247,8 @@ class _HttpTrace {
     required this.path,
     required this.requestId,
     required this.statusCode,
+    required this.statusLabel,
+    required this.errorType,
     required this.durationMs,
   });
 
@@ -293,6 +295,13 @@ class _HttpTrace {
     final statusText = responseMatch?.namedGroup('status');
     final statusCode =
         statusText == null ? null : int.tryParse(statusText.split(' ').first);
+    final errorPayload = errorPayloadEntry?.message;
+    final errorType = _extractErrorType(errorPayload);
+    final statusLabel = _deriveStatusLabel(
+      statusCode: statusCode,
+      statusText: statusText,
+      errorType: errorType,
+    );
     final durationMs =
         int.tryParse(responseMatch?.namedGroup('durationMs') ?? '');
 
@@ -304,11 +313,13 @@ class _HttpTrace {
       errorLine: errorPayloadEntry?.title,
       requestPayload: requestPayloadEntry?.message,
       responsePayload: responsePayloadEntry?.message,
-      errorPayload: errorPayloadEntry?.message,
+      errorPayload: errorPayload,
       method: method,
       path: path,
       requestId: requestId,
       statusCode: statusCode,
+      statusLabel: statusLabel,
+      errorType: errorType,
       durationMs: durationMs,
     );
   }
@@ -325,6 +336,8 @@ class _HttpTrace {
   final String path;
   final String? requestId;
   final int? statusCode;
+  final String statusLabel;
+  final String? errorType;
   final int? durationMs;
 
   bool get hasError =>
@@ -343,6 +356,8 @@ class _HttpTrace {
       path,
       requestId ?? '',
       statusCode?.toString() ?? '',
+      statusLabel,
+      errorType ?? '',
       requestLine ?? '',
       responseLine ?? '',
       errorLine ?? '',
@@ -357,8 +372,39 @@ final _requestLineRegExp = RegExp(
 );
 
 final _responseLineRegExp = RegExp(
-  r'^HTTP(?:\s+#(?<id>\d+))?\s+⬅️\s+(?<status>[0-9]+(?:\s+ERROR)?|ERROR)\s+(?<method>[A-Z]+)\s+(?<path>.+?)(?:\s+\((?<durationMs>\d+)ms\))?$',
+  r'^HTTP(?:\s+#(?<id>\d+))?\s+⬅️\s+(?<status>[0-9]+(?:\s+ERROR)?|[A-Z_]+(?:\s+ERROR)?)\s+(?<method>[A-Z]+)\s+(?<path>.+?)(?:\s+\((?<durationMs>\d+)ms\))?$',
 );
+
+String? _extractErrorType(String? errorPayload) {
+  if (errorPayload == null || errorPayload.trim().isEmpty) {
+    return null;
+  }
+  final match = RegExp(r'^type:\s*([^\n\r]+)$', multiLine: true)
+      .firstMatch(errorPayload);
+  return match?.group(1)?.trim();
+}
+
+String _deriveStatusLabel({
+  required int? statusCode,
+  required String? statusText,
+  required String? errorType,
+}) {
+  if (statusCode != null) {
+    return statusCode.toString();
+  }
+  final normalizedStatusText = statusText?.trim();
+  if (normalizedStatusText != null && normalizedStatusText.isNotEmpty) {
+    final raw = normalizedStatusText.replaceAll(' ERROR', '');
+    if (raw.isNotEmpty && raw != 'ERROR') {
+      return raw;
+    }
+  }
+  final normalizedErrorType = errorType?.trim();
+  if (normalizedErrorType != null && normalizedErrorType.isNotEmpty) {
+    return normalizedErrorType;
+  }
+  return 'ERROR';
+}
 
 class _TraceListPane extends StatelessWidget {
   const _TraceListPane({
@@ -467,7 +513,10 @@ class _TraceListTile extends StatelessWidget {
                   _MethodBadge(method: trace.method),
                   const SizedBox(width: 8),
                   _StatusBadge(
-                      statusCode: trace.statusCode, hasError: trace.hasError),
+                    statusCode: trace.statusCode,
+                    statusLabel: trace.statusLabel,
+                    hasError: trace.hasError,
+                  ),
                   const Spacer(),
                   Text(
                     trace.durationMs == null ? '...' : '${trace.durationMs} ms',
@@ -601,7 +650,10 @@ class _TraceHeader extends StatelessWidget {
             _MethodBadge(method: trace.method),
             const SizedBox(width: 8),
             _StatusBadge(
-                statusCode: trace.statusCode, hasError: trace.hasError),
+              statusCode: trace.statusCode,
+              statusLabel: trace.statusLabel,
+              hasError: trace.hasError,
+            ),
             const SizedBox(width: 8),
             Text(
               trace.durationMs == null ? '...' : '${trace.durationMs} ms',
@@ -633,11 +685,12 @@ class _TraceOverview extends StatelessWidget {
     final rows = <MapEntry<String, String>>[
       MapEntry('Method', trace.method),
       MapEntry('Path', trace.path),
-      MapEntry('Status', trace.statusCode?.toString() ?? 'Pending/Error'),
+      MapEntry('Status', trace.statusLabel),
       MapEntry('Duration',
           trace.durationMs == null ? 'Unknown' : '${trace.durationMs} ms'),
       MapEntry('Log Entry', '#${trace.logEntryId}'),
       if (trace.requestId != null) MapEntry('Request ID', trace.requestId!),
+      if (trace.errorType != null) MapEntry('Error Type', trace.errorType!),
       if (trace.requestLine != null)
         MapEntry('Request Line', trace.requestLine!),
       if (trace.responseLine != null)
@@ -740,10 +793,12 @@ class _MethodBadge extends StatelessWidget {
 class _StatusBadge extends StatelessWidget {
   const _StatusBadge({
     required this.statusCode,
+    required this.statusLabel,
     required this.hasError,
   });
 
   final int? statusCode;
+  final String statusLabel;
   final bool hasError;
 
   @override
@@ -761,7 +816,7 @@ class _StatusBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        statusCode?.toString() ?? (hasError ? 'ERROR' : 'PENDING'),
+        statusCode?.toString() ?? statusLabel,
         style: TextStyle(
           color: foregroundColor,
           fontWeight: FontWeight.w700,

@@ -26,22 +26,48 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 
 flutter_macos_podfile_setup
 
+def run_or_raise(cwd, *command)
+  success = Dir.chdir(cwd) do
+    system(*command)
+  end
+  raise "Failed to run #{command.join(' ')} in #{cwd}" unless success
+end
+
+def prepare_media_kit_artifacts
+  plugins_dir = File.join(__dir__, 'Flutter', 'ephemeral', '.symlinks', 'plugins')
+
+  media_kit_video_dir = File.join(plugins_dir, 'media_kit_video')
+  if Dir.exist?(media_kit_video_dir)
+    headers_dir = File.join(media_kit_video_dir, 'macos', 'Headers')
+    run_or_raise(
+      File.join(media_kit_video_dir, 'common', 'darwin'),
+      'make',
+      "HEADERS_DESTDIR=#{headers_dir}",
+    )
+  end
+
+  media_kit_libs_macos_video_dir = File.join(plugins_dir, 'media_kit_libs_macos_video', 'macos')
+  if Dir.exist?(media_kit_libs_macos_video_dir)
+    run_or_raise(media_kit_libs_macos_video_dir, 'make')
+  end
+end
+
 target 'Runner' do
   use_frameworks!
   use_modular_headers!
 
+  prepare_media_kit_artifacts
   flutter_install_all_macos_pods File.dirname(File.realpath(__FILE__))
 end
 
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_macos_build_settings(target)
-  end
 
-  installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
-      # NOTE MODIFIED add #221
-      config.build_settings['ARCHS'] = 'x86_64'
+      if target.name == 'volume_controller'
+        config.build_settings['EXCLUDED_SOURCE_FILE_NAMES'] = 'PrivacyInfo.xcprivacy'
+      end
     end
   end
 end

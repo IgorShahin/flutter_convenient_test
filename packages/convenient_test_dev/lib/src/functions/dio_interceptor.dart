@@ -119,7 +119,9 @@ class ConvenientTestDioInterceptor extends Interceptor {
     final latency =
         startedAt == null ? null : DateTime.now().difference(startedAt);
     final latencyPart = latency == null ? '' : ' (${latency.inMilliseconds}ms)';
-    final statusPart = statusCode == null ? 'ERROR' : '$statusCode ERROR';
+    final errorKind = _formatDioErrorKind(err.type);
+    final statusPart =
+        statusCode == null ? '$errorKind ERROR' : '$statusCode ERROR';
 
     final log = req.extra[_kReqLogHandleExtra] as LogHandle? ??
         convenientTestLog(
@@ -128,6 +130,7 @@ class ConvenientTestDioInterceptor extends Interceptor {
         'HTTP$idPart ⬅️  $statusPart $method $path$latencyPart', '');
 
     final chunks = <String>[
+      'type: ${err.type.name}',
       if (err.message?.trim().isNotEmpty == true) 'error: ${err.message}',
       _buildHttpMessage(
         headers: err.response?.headers.map,
@@ -213,4 +216,25 @@ Object _maskSensitive(Object? value, Set<String> sensitiveKeys) {
     return value;
   }
   return value.toString();
+}
+
+String _formatDioErrorKind(DioExceptionType type) {
+  switch (type) {
+    case DioExceptionType.cancel:
+      return 'CANCELLED';
+    case DioExceptionType.connectionTimeout:
+      return 'CONNECTION_TIMEOUT';
+    case DioExceptionType.sendTimeout:
+      return 'SEND_TIMEOUT';
+    case DioExceptionType.receiveTimeout:
+      return 'RECEIVE_TIMEOUT';
+    case DioExceptionType.badCertificate:
+      return 'BAD_CERTIFICATE';
+    case DioExceptionType.badResponse:
+      return 'BAD_RESPONSE';
+    case DioExceptionType.connectionError:
+      return 'CONNECTION_ERROR';
+    case DioExceptionType.unknown:
+      return 'UNKNOWN';
+  }
 }
