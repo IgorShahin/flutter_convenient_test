@@ -148,8 +148,8 @@ class HomePageLogEntryWidget extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
                         color: Theme.of(context).colorScheme.secondaryContainer,
                         borderRadius: BorderRadius.circular(4),
@@ -206,6 +206,7 @@ class HomePageLogEntryWidget extends StatelessWidget {
   void _handleTapOrHover(LogSubEntry interestLogSubEntry,
       {required bool targetState, bool fromHover = false}) {
     final highlightStore = GetIt.I.get<HighlightStore>();
+    final homePageStore = GetIt.I.get<HomePageStore>();
     final videoPlayerStore = GetIt.I.get<VideoPlayerStore>();
 
     if (fromHover) {
@@ -216,6 +217,10 @@ class HomePageLogEntryWidget extends StatelessWidget {
 
     highlightStore.highlightLogEntryId = targetState ? logEntryId : null;
     highlightStore.highlightTestEntryId = targetState ? testEntryId : null;
+    if (targetState && _isHttpLikeSubEntry(interestLogSubEntry)) {
+      homePageStore.activeSecondaryPanelTab =
+          HomePageSecondaryPanelTab.requests;
+    }
 
     if (targetState) {
       final activeVideo = videoPlayerStore.activeVideo;
@@ -224,6 +229,11 @@ class HomePageLogEntryWidget extends StatelessWidget {
             activeVideo.absoluteToVideoTime(interestLogSubEntry.timeTyped));
       }
     }
+  }
+
+  bool _isHttpLikeSubEntry(LogSubEntry subEntry) {
+    final title = subEntry.title.toUpperCase();
+    return title.startsWith('HTTP') || title.contains('CHUCK');
   }
 
   Widget _buildTitle(LogSubEntry interestLogSubEntry, BuildContext context) {

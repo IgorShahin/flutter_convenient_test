@@ -1,4 +1,5 @@
 import 'package:convenient_test_manager/components/home_page/raw_log_panel.dart';
+import 'package:convenient_test_manager/components/home_page/request_log_panel.dart';
 import 'package:convenient_test_manager/components/home_page/screenshot_panel.dart';
 import 'package:convenient_test_manager/components/home_page/video_panel.dart';
 import 'package:convenient_test_manager/stores/home_page_store.dart';
@@ -34,6 +35,8 @@ class HomePageSecondaryPanel extends StatelessWidget {
     switch (homePageStore.activeSecondaryPanelTab) {
       case HomePageSecondaryPanelTab.screenshot:
         return const HomePageScreenshotPanel();
+      case HomePageSecondaryPanelTab.requests:
+        return const HomePageRequestLogPanel();
       case HomePageSecondaryPanelTab.rawLog:
         return const HomePageRawLogPanel();
       case HomePageSecondaryPanelTab.video:

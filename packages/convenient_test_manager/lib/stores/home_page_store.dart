@@ -30,6 +30,7 @@ abstract class _HomePageStore with Store {
 
 enum HomePageSecondaryPanelTab {
   screenshot,
+  requests,
   video,
   rawLog,
   none,
@@ -48,6 +49,8 @@ extension ExtHomePageSecondaryPanelTab on HomePageSecondaryPanelTab {
     switch (this) {
       case HomePageSecondaryPanelTab.screenshot:
         return 'Screenshots';
+      case HomePageSecondaryPanelTab.requests:
+        return 'Chuck';
       case HomePageSecondaryPanelTab.video:
         return 'Videos';
       case HomePageSecondaryPanelTab.rawLog:
