@@ -16,6 +16,7 @@ class ConvenientTestDioInterceptor extends Interceptor {
   static const _kReqIdExtra = '__convenient_test_http_req_id__';
   static const _kReqStartedAtExtra = '__convenient_test_http_started_at__';
   static const _kReqLogHandleExtra = '__convenient_test_http_log_handle__';
+  static const _kReqTrackedExtra = '__convenient_test_http_tracked__';
 
   final HttpLogOptions options;
   int _nextRequestId = 1;
@@ -24,7 +25,11 @@ class ConvenientTestDioInterceptor extends Interceptor {
   void onRequest(
       RequestOptions requestOptions, RequestInterceptorHandler handler) {
     handler.next(requestOptions);
-    if (!options.enabled) return;
+    if (!options.enabled || !hasActiveConvenientTest) {
+      requestOptions.extra[_kReqTrackedExtra] = false;
+      return;
+    }
+    requestOptions.extra[_kReqTrackedExtra] = true;
     unawaited(_logRequest(requestOptions));
   }
 
@@ -32,14 +37,20 @@ class ConvenientTestDioInterceptor extends Interceptor {
   void onResponse(
       Response<dynamic> response, ResponseInterceptorHandler handler) {
     handler.next(response);
-    if (!options.enabled) return;
+    if (!options.enabled ||
+        response.requestOptions.extra[_kReqTrackedExtra] != true) {
+      return;
+    }
     unawaited(_logResponse(response));
   }
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
     handler.next(err);
-    if (!options.enabled) return;
+    if (!options.enabled ||
+        err.requestOptions.extra[_kReqTrackedExtra] != true) {
+      return;
+    }
     unawaited(_logError(err));
   }
 

@@ -34,6 +34,8 @@ LogHandle convenientTestLog(
   LiveTest? liveTest,
 }) {
   final log = LogHandle.create(liveTest: liveTest);
+  _updateActiveTestTracking(
+      log._testName, type ?? LogSubEntryType.GENERAL_MESSAGE);
 
   log.update(
     title,
@@ -47,6 +49,23 @@ LogHandle convenientTestLog(
 
   return log;
 }
+
+final _activeConvenientTestNames = <String>{};
+
+void _updateActiveTestTracking(String testName, LogSubEntryType type) {
+  switch (type) {
+    case LogSubEntryType.TEST_START:
+      _activeConvenientTestNames.add(testName);
+      return;
+    case LogSubEntryType.TEST_END:
+      _activeConvenientTestNames.remove(testName);
+      return;
+    default:
+      return;
+  }
+}
+
+bool get hasActiveConvenientTest => _activeConvenientTestNames.isNotEmpty;
 
 typedef LogUpdate = void Function(
   String title,

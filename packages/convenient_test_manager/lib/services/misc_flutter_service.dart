@@ -108,7 +108,7 @@ class MiscFlutterService extends MiscDartService {
     });
     try {
       await allureService
-          .autoPublishToDockerIfConfigured(force: false)
+          .generateLocalSiteIfPossible(openWhenDone: true)
           .timeout(_kOpenAllurePublishTimeout);
       runInAction(() {
         homePageStore.allurePublishUiState.value =
@@ -116,8 +116,7 @@ class MiscFlutterService extends MiscDartService {
       });
     } on TimeoutException catch (e, s) {
       runInAction(() {
-        homePageStore.allurePublishUiState.value =
-            AllurePublishUiState.timeout;
+        homePageStore.allurePublishUiState.value = AllurePublishUiState.timeout;
       });
       Log.w(_kTag, 'openAllureReportSite publish timeout e=$e s=$s');
     } catch (e, s) {
@@ -125,8 +124,6 @@ class MiscFlutterService extends MiscDartService {
         homePageStore.allurePublishUiState.value = AllurePublishUiState.failed;
       });
       Log.w(_kTag, 'openAllureReportSite publish failed e=$e s=$s');
-    } finally {
-      await allureService.openLatestReportSite();
     }
   }
 

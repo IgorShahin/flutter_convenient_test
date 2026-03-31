@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:convenient_test_common_dart/convenient_test_common_dart.dart';
 import 'package:convenient_test_manager_dart/misc/setup.dart';
+import 'package:convenient_test_manager_dart/services/allure_report_service.dart';
 import 'package:convenient_test_manager_dart/services/misc_dart_service.dart';
 import 'package:convenient_test_manager_dart/services/status_periodic_logger.dart';
 import 'package:convenient_test_manager_dart/services/vm_service_wrapper_service.dart';
@@ -45,6 +46,9 @@ Future<void> main(List<String> args) async {
 
   Log.i(_kTag, 'step awaitSuperRunStatusTestAllDone');
   await _awaitSuperRunStatusTestAllDone();
+
+  Log.i(_kTag, 'step generateLocalAllureReport');
+  await GetIt.I.get<ManagerAllureReportService>().generateLocalSiteIfPossible();
 
   Log.i(_kTag, 'step exit');
   exit(_calcExitCode());

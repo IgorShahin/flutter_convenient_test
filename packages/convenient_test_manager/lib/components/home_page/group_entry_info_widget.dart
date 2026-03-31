@@ -284,8 +284,15 @@ class _TestInfoSectionBuilder extends StaticSectionBuilder {
   List<int> get logEntryIds =>
       GetIt.I.get<LogStore>().logEntryInTest[info.id] ?? <int>[];
 
+  List<int> get visibleLogEntryIds {
+    final logStore = GetIt.I.get<LogStore>();
+    return logEntryIds
+        .where((logEntryId) => !_isHttpOnlyLogEntry(logStore, logEntryId))
+        .toList(growable: false);
+  }
+
   Iterable<StaticSection> _buildLogEntries(SimplifiedStateEnum state) sync* {
-    final logEntryIds = this.logEntryIds;
+    final logEntryIds = visibleLogEntryIds;
 
     if (logEntryIds.isEmpty) {
       yield StaticSection.single(
@@ -334,6 +341,26 @@ class _TestInfoSectionBuilder extends StaticSectionBuilder {
       if (isStart) return i;
     }
     return logEntryIds.length;
+  }
+
+  bool _isHttpOnlyLogEntry(LogStore logStore, int logEntryId) {
+    final subEntryIds = logStore.logSubEntryInEntry[logEntryId];
+    if (subEntryIds == null || subEntryIds.isEmpty) {
+      return false;
+    }
+
+    final subEntries = subEntryIds
+        .map((id) => logStore.logSubEntryMap[id])
+        .whereType<LogSubEntry>()
+        .toList(growable: false);
+    if (subEntries.isEmpty) {
+      return false;
+    }
+
+    return subEntries.every((subEntry) {
+      final title = subEntry.title.toUpperCase();
+      return title.startsWith('HTTP') || title.contains('CHUCK');
+    });
   }
 
   String _calcSetupGroupLabel() {

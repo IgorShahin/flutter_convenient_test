@@ -15,27 +15,6 @@ class ManagerAllureReportService {
   static const _kTag = 'ManagerAllureReportService';
   static const _kGenerateOpenPublishTimeout = Duration(seconds: 20);
   static const _kVideoChunkSnapshotPrefix = '__ct_video_chunk__';
-  static const _kAutoPublishEnabledEnvKey =
-      'CONVENIENT_TEST_ALLURE_DOCKER_AUTO_PUBLISH';
-  static const _kAutoPublishApiBaseUrlEnvKey =
-      'CONVENIENT_TEST_ALLURE_DOCKER_API_BASE_URL';
-  static const _kAutoPublishProjectIdEnvKey =
-      'CONVENIENT_TEST_ALLURE_DOCKER_PROJECT_ID';
-  static const _kAutoPublishProjectPrefixEnvKey =
-      'CONVENIENT_TEST_ALLURE_DOCKER_PROJECT_PREFIX';
-  static const _kAutoPublishProjectEnvEnvKey =
-      'CONVENIENT_TEST_ALLURE_DOCKER_PROJECT_ENV';
-  static const _kAutoPublishProjectRepoEnvKey =
-      'CONVENIENT_TEST_ALLURE_DOCKER_PROJECT_REPO';
-  static const _kDefaultDockerApiBaseUrl =
-      'http://localhost:5050/allure-docker-service';
-  static const _kDefaultProjectId = 'default';
-  static const _kConfigEnableKey = 'enableAllureDockerAutoPublish';
-  static const _kConfigApiBaseUrlKey = 'allureDockerApiBaseUrl';
-  static const _kConfigProjectIdKey = 'allureDockerProjectId';
-  static const _kConfigProjectPrefixKey = 'allureDockerProjectPrefix';
-  static const _kConfigProjectEnvKey = 'allureDockerProjectEnv';
-  static const _kConfigProjectRepoKey = 'allureDockerProjectRepo';
 
   Future<void> save(ReportCollection request) async {
     if (!supportsIoPlatform) return;
@@ -59,19 +38,63 @@ class ManagerAllureReportService {
       Log.w(_kTag, 'generateAndOpenSite skipped on non-io runtime');
       return;
     }
+    await generateLocalSiteIfPossible(openWhenDone: true);
+  }
 
-    await openLatestReportSite();
+  Future<void> generateLocalSiteIfPossible({bool openWhenDone = false}) async {
+    if (!supportsIoPlatform) {
+      Log.w(_kTag, 'generateLocalSiteIfPossible skipped on non-io runtime');
+      return;
+    }
 
-    unawaited(() async {
-      try {
-        await autoPublishToDockerIfConfigured(force: true)
-            .timeout(_kGenerateOpenPublishTimeout);
-      } on TimeoutException catch (e, s) {
-        Log.w(_kTag, 'open-triggered auto-publish timeout e=$e s=$s');
-      } catch (e, s) {
-        Log.w(_kTag, 'open-triggered auto-publish failed e=$e s=$s');
+    await _ensureActiveRunContext();
+    final resultsDirPath = _resultsDirPath;
+    if (resultsDirPath == null) return;
+
+    final hasResults = Directory(resultsDirPath)
+        .listSync()
+        .whereType<File>()
+        .any((f) => f.path.endsWith('-result.json'));
+    if (!hasResults) {
+      Log.i(_kTag, 'skip local allure generation: no result files');
+      return;
+    }
+
+    final reportDirPath =
+        await GetIt.I.get<FsService>().getActiveSuperRunDataSubDirectory(
+              category: 'AllureReport',
+            );
+
+    try {
+      final result = await Process.run(
+        'allure',
+        ['generate', resultsDirPath, '--clean', '-o', reportDirPath],
+        runInShell: true,
+      ).timeout(const Duration(seconds: 60));
+      if (result.exitCode != 0) {
+        Log.w(
+          _kTag,
+          'local allure generation failed exitCode=${result.exitCode} '
+          'stdout=${(result.stdout as Object?)?.toString().trim()} '
+          'stderr=${(result.stderr as Object?)?.toString().trim()}',
+        );
+        return;
       }
-    }());
+      Log.i(_kTag, 'local allure report generated at path=$reportDirPath');
+    } catch (e, s) {
+      Log.w(
+        _kTag,
+        'local allure generation skipped (is `allure` installed?) e=$e s=$s',
+      );
+      return;
+    }
+
+    if (!openWhenDone) return;
+    final reportIndexPath = '$reportDirPath/index.html';
+    final started =
+        await _openUrlDetached(Uri.file(reportIndexPath).toString());
+    if (!started) return;
+    Log.i(_kTag, 'local allure report opened path=$reportIndexPath');
   }
 
   Future<bool> openLatestReportSite() async {
@@ -79,17 +102,22 @@ class ManagerAllureReportService {
       Log.w(_kTag, 'openLatestReportSite skipped on non-io runtime');
       return false;
     }
-    final settings = await _resolveAutoPublishSettings();
-    final latestReportUri = _buildApiUri(
-      settings.apiBaseUrl,
-      '/latest-report',
-      projectId: settings.projectId,
-    );
+    await _ensureActiveRunContext();
+    final reportDirPath =
+        await GetIt.I.get<FsService>().getActiveSuperRunDataSubDirectory(
+              category: 'AllureReport',
+            );
+    final reportIndexPath = '$reportDirPath/index.html';
+    final reportIndexFile = File(reportIndexPath);
+    if (!reportIndexFile.existsSync()) {
+      await generateLocalSiteIfPossible(openWhenDone: true);
+      return true;
+    }
 
-    final reportUrl = latestReportUri.toString();
-    final started = await _openUrlDetached(reportUrl);
+    final started =
+        await _openUrlDetached(Uri.file(reportIndexPath).toString());
     if (!started) return false;
-    Log.i(_kTag, 'remote allure report opened url=$reportUrl');
+    Log.i(_kTag, 'local allure report opened path=$reportIndexPath');
     return true;
   }
 
@@ -98,78 +126,13 @@ class ManagerAllureReportService {
       Log.w(_kTag, 'clearRemoteHistory skipped on non-io runtime');
       return false;
     }
-
-    final settings = await _resolveAutoPublishSettings();
-    final candidateUris = <Uri>[
-      _buildApiUri(
-        settings.apiBaseUrl,
-        '/clean-history',
-        projectId: settings.projectId,
-      ),
-      _buildApiUriWithProjectInPath(
-        settings.apiBaseUrl,
-        settings.projectId,
-        '/clean-history',
-      ),
-      _buildApiUriWithProjectInPath(
-        settings.apiBaseUrl,
-        settings.projectId,
-        '/history/clean',
-      ),
-    ];
-
-    int? successStatus;
-    Uri? successUri;
-    for (final uri in candidateUris) {
-      final status = await _httpGetStatus(uri.toString());
-      if (status >= 200 && status < 300) {
-        successStatus = status;
-        successUri = uri;
-        break;
-      }
-      Log.w(
-          _kTag, 'clearRemoteHistory candidate failed status=$status uri=$uri');
-    }
-
-    if (successUri == null) {
-      Log.w(
-        _kTag,
-        'clearRemoteHistory failed for all endpoints '
-        'projectId=${settings.projectId} apiBaseUrl=${settings.apiBaseUrl}',
-      );
-      return false;
-    }
-
-    if (clearResults) {
-      final cleanResultsUri = _buildApiUri(
-        settings.apiBaseUrl,
-        '/clean-results',
-        projectId: settings.projectId,
-      );
-      final cleanResultsStatus =
-          await _httpGetStatus(cleanResultsUri.toString());
-      if (cleanResultsStatus < 200 || cleanResultsStatus >= 300) {
-        Log.w(
-          _kTag,
-          'clearRemoteHistory clean-results returned status=$cleanResultsStatus '
-          'uri=$cleanResultsUri',
-        );
-      }
-    }
-
-    Log.i(
-      _kTag,
-      'clearRemoteHistory success status=$successStatus '
-      'uri=$successUri projectId=${settings.projectId}',
-    );
+    await _clearLocalAllureArtifacts(clearResults: clearResults);
+    Log.i(_kTag, 'clearRemoteHistory mapped to local allure cleanup');
     return true;
   }
 
   Future<void> autoPublishToDockerIfConfigured({bool force = false}) async {
     if (!supportsIoPlatform) return;
-
-    final settings = await _resolveAutoPublishSettings();
-    if (!settings.enabled) return;
 
     final superRunId =
         GetIt.I.get<WorkerSuperRunStore>().currSuperRunController.superRunId;
@@ -180,96 +143,17 @@ class ManagerAllureReportService {
 
     _autoPublishInProgress = true;
     try {
-      await _ensureActiveRunContext();
-      final sourceResultsDir = _resultsDirPath;
-      if (sourceResultsDir == null) return;
-
-      final hasResults = Directory(sourceResultsDir)
-          .listSync()
-          .whereType<File>()
-          .any((f) => f.path.endsWith('-result.json'));
-      if (!hasResults) {
-        Log.i(_kTag, 'auto-publish skip: no non-service allure result files');
-        return;
-      }
-
-      final currentFingerprint =
-          await _computeResultsFingerprint(sourceResultsDir);
-      final cacheKey = '${settings.apiBaseUrl}::${settings.projectId}';
-      final lastFingerprint = _lastAutoPublishedFingerprintByProject[cacheKey];
-      if (lastFingerprint != null && lastFingerprint == currentFingerprint) {
-        Log.i(
-          _kTag,
-          'auto-publish skip: results unchanged '
-          'projectId=${settings.projectId} superRunId=$superRunId',
-        );
-        _lastAutoPublishedSuperRunId = superRunId;
-        return;
-      }
-
-      final cleaned = await _cleanRemoteResults(
-        apiBaseUrl: settings.apiBaseUrl,
-        projectId: settings.projectId,
-      );
-      if (!cleaned) {
-        Log.w(
-          _kTag,
-          'auto-publish aborted: cannot clean remote results '
-          '(to avoid duplicated history/results)',
-        );
-        return;
-      }
-
-      final sendStatus = await _sendResultsToAllureDocker(
-        sourceDirPath: sourceResultsDir,
-        apiBaseUrl: settings.apiBaseUrl,
-        projectId: settings.projectId,
-      );
-      if (sendStatus < 200 || sendStatus >= 300) {
-        Log.w(
-          _kTag,
-          'auto-publish send-results returned status=$sendStatus',
-        );
-        return;
-      }
-
-      final generateUri = _buildApiUri(
-        settings.apiBaseUrl,
-        '/generate-report',
-        projectId: settings.projectId,
-      ).replace(queryParameters: {
-        ..._buildApiUri(
-          settings.apiBaseUrl,
-          '/generate-report',
-          projectId: settings.projectId,
-        ).queryParameters,
-        'keep_history': '1',
-      });
-      final responseCode = await _httpGetStatus(generateUri.toString());
-      if (responseCode < 200 || responseCode >= 300) {
-        Log.w(
-          _kTag,
-          'auto-publish generate-report returned status=$responseCode uri=$generateUri',
-        );
-        return;
-      }
-
-      final latestReportUri = _buildApiUri(
-        settings.apiBaseUrl,
-        '/latest-report',
-        projectId: settings.projectId,
-      );
-      _lastAutoPublishedFingerprintByProject[cacheKey] = currentFingerprint;
+      await generateLocalSiteIfPossible(openWhenDone: false)
+          .timeout(_kGenerateOpenPublishTimeout);
       _lastAutoPublishedSuperRunId = superRunId;
       Log.i(
         _kTag,
-        'auto-publish success superRunId=$superRunId '
-        'projectId=${settings.projectId} '
-        'reportUrl=$latestReportUri '
-        'source=$sourceResultsDir',
+        'local allure generation completed superRunId=$superRunId',
       );
+    } on TimeoutException catch (e, s) {
+      Log.w(_kTag, 'local allure generation timeout e=$e s=$s');
     } catch (e, s) {
-      Log.w(_kTag, 'auto-publish failed e=$e s=$s');
+      Log.w(_kTag, 'local allure generation failed e=$e s=$s');
     } finally {
       _autoPublishInProgress = false;
     }
@@ -1397,6 +1281,28 @@ class ManagerAllureReportService {
     _resetState();
   }
 
+  Future<void> _clearLocalAllureArtifacts({bool clearResults = false}) async {
+    await _ensureActiveRunContext();
+    await _clearAllureResults();
+
+    final reportDirPath =
+        await GetIt.I.get<FsService>().getActiveSuperRunDataSubDirectory(
+              category: 'AllureReport',
+            );
+    final reportDir = Directory(reportDirPath);
+    if (reportDir.existsSync()) {
+      await reportDir.delete(recursive: true);
+    }
+    await reportDir.create(recursive: true);
+
+    if (!clearResults) {
+      Log.i(
+        _kTag,
+        'local allure history cleared (results and report reset together)',
+      );
+    }
+  }
+
   Future<void> _removePreviousResultForHistoryId(String historyId) async {
     final resultsDirPath = _resultsDirPath;
     if (resultsDirPath == null || historyId.trim().isEmpty) return;
@@ -1449,33 +1355,6 @@ class ManagerAllureReportService {
     }
   }
 
-  Future<String> _computeResultsFingerprint(String sourceDirPath) async {
-    final sourceDir = Directory(sourceDirPath);
-    if (!sourceDir.existsSync()) return 'missing';
-
-    final files = sourceDir
-        .listSync(recursive: true, followLinks: false)
-        .whereType<File>()
-        .where((f) =>
-            f.path.endsWith('-result.json') ||
-            f.path.endsWith('-container.json'))
-        .toList()
-      ..sort((a, b) => a.path.compareTo(b.path));
-
-    final payload = StringBuffer();
-    for (final file in files) {
-      final stat = file.statSync();
-      payload
-        ..write(file.path)
-        ..write('|')
-        ..write(stat.size)
-        ..write('|')
-        ..write(stat.modified.toUtc().microsecondsSinceEpoch)
-        ..write('\n');
-    }
-    return crypto.sha1.convert(utf8.encode(payload.toString())).toString();
-  }
-
   Future<void> _writeContainer(_AllureTestRuntime runtime) async {
     if (_resultsDirPath == null) return;
     final befores =
@@ -1495,445 +1374,6 @@ class ManagerAllureReportService {
     };
     final containerPath = '$_resultsDirPath$containerUuid-container.json';
     File(containerPath).writeAsStringSync(jsonEncode(container), flush: true);
-  }
-
-  Uri _buildApiUri(
-    String apiBaseUrl,
-    String path, {
-    required String projectId,
-  }) {
-    final baseUri = Uri.parse(apiBaseUrl);
-    final normalizedPath =
-        '${baseUri.path.endsWith('/') ? baseUri.path.substring(0, baseUri.path.length - 1) : baseUri.path}$path';
-    return baseUri.replace(
-      path: normalizedPath,
-      queryParameters: {
-        ...baseUri.queryParameters,
-        'project_id': projectId,
-      },
-    );
-  }
-
-  Uri _buildApiUriWithProjectInPath(
-    String apiBaseUrl,
-    String projectId,
-    String subPath,
-  ) {
-    final baseUri = Uri.parse(apiBaseUrl);
-    final basePath = baseUri.path.endsWith('/')
-        ? baseUri.path.substring(0, baseUri.path.length - 1)
-        : baseUri.path;
-    return baseUri.replace(
-      path: '$basePath/projects/$projectId$subPath',
-      queryParameters: {
-        ...baseUri.queryParameters,
-      },
-    );
-  }
-
-  Future<int> _sendResultsToAllureDocker({
-    required String sourceDirPath,
-    required String apiBaseUrl,
-    required String projectId,
-  }) async {
-    final sourceDir = Directory(sourceDirPath);
-    if (!sourceDir.existsSync()) return 0;
-
-    final files = sourceDir
-        .listSync(recursive: true, followLinks: false)
-        .whereType<File>()
-        .toList();
-    if (files.isEmpty) return 0;
-
-    final multipartStatus = await _sendResultsMultipart(
-      files: files,
-      apiBaseUrl: apiBaseUrl,
-      projectId: projectId,
-      sourceDirPath: sourceDirPath,
-    );
-    if (multipartStatus >= 200 && multipartStatus < 300) {
-      Log.i(_kTag, 'send-results success via multipart files[]');
-      return multipartStatus;
-    }
-
-    Log.w(
-      _kTag,
-      'send-results multipart failed status=$multipartStatus, retrying as json base64',
-    );
-    final jsonStatus = await _sendResultsJsonBase64(
-      files: files,
-      apiBaseUrl: apiBaseUrl,
-      projectId: projectId,
-      sourceDirPath: sourceDirPath,
-    );
-    if (jsonStatus >= 200 && jsonStatus < 300) {
-      Log.i(_kTag, 'send-results success via json results[]');
-    }
-    return jsonStatus;
-  }
-
-  String _escapeHeaderValue(String value) =>
-      value.replaceAll('\\', r'\\').replaceAll('"', r'\"');
-
-  Future<int> _sendResultsMultipart({
-    required List<File> files,
-    required String apiBaseUrl,
-    required String projectId,
-    required String sourceDirPath,
-  }) async {
-    final uri = _buildApiUri(apiBaseUrl, '/send-results', projectId: projectId)
-        .replace(queryParameters: {
-      ..._buildApiUri(apiBaseUrl, '/send-results', projectId: projectId)
-          .queryParameters,
-      'force_project_creation': 'true',
-    });
-    final boundary =
-        '----ct-boundary-${DateTime.now().toUtc().microsecondsSinceEpoch}-${_random.nextInt(1 << 32)}';
-    final rootPath = sourceDirPath.endsWith(Platform.pathSeparator)
-        ? sourceDirPath
-        : '$sourceDirPath${Platform.pathSeparator}';
-
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 10);
-    try {
-      final req = await client.postUrl(uri);
-      req.headers.contentType = ContentType('multipart', 'form-data',
-          parameters: {'boundary': boundary});
-
-      for (final file in files) {
-        final fileName = file.path.startsWith(rootPath)
-            ? file.path.substring(rootPath.length)
-            : (file.uri.pathSegments.isEmpty
-                ? file.path
-                : file.uri.pathSegments.last);
-        req.add(utf8.encode('--$boundary\r\n'));
-        req.add(utf8.encode(
-          'Content-Disposition: form-data; name="files[]"; filename="${_escapeHeaderValue(fileName)}"\r\n',
-        ));
-        req.add(utf8.encode('Content-Type: application/octet-stream\r\n\r\n'));
-        await req.addStream(file.openRead());
-        req.add(utf8.encode('\r\n'));
-      }
-      req.add(utf8.encode('--$boundary--\r\n'));
-
-      final resp = await req.close().timeout(const Duration(minutes: 2));
-      await resp.drain<void>();
-      return resp.statusCode;
-    } catch (e, s) {
-      Log.w(_kTag, 'send-results multipart exception e=$e s=$s');
-      return 0;
-    } finally {
-      client.close(force: true);
-    }
-  }
-
-  Future<int> _sendResultsJsonBase64({
-    required List<File> files,
-    required String apiBaseUrl,
-    required String projectId,
-    required String sourceDirPath,
-  }) async {
-    final uri = _buildApiUri(apiBaseUrl, '/send-results', projectId: projectId)
-        .replace(queryParameters: {
-      ..._buildApiUri(apiBaseUrl, '/send-results', projectId: projectId)
-          .queryParameters,
-      'force_project_creation': 'true',
-    });
-    final rootPath = sourceDirPath.endsWith(Platform.pathSeparator)
-        ? sourceDirPath
-        : '$sourceDirPath${Platform.pathSeparator}';
-
-    final results = <Map<String, String>>[];
-    for (final file in files) {
-      final relativeName = file.path.startsWith(rootPath)
-          ? file.path.substring(rootPath.length)
-          : (file.uri.pathSegments.isEmpty
-              ? file.path
-              : file.uri.pathSegments.last);
-      final bytes = await file.readAsBytes();
-      results.add({
-        'file_name': relativeName,
-        'content_base64': base64Encode(bytes),
-      });
-    }
-
-    final payload = jsonEncode({
-      'results': results,
-    });
-
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 10);
-    try {
-      final req = await client.postUrl(uri);
-      req.headers.contentType = ContentType('application', 'json');
-      req.add(utf8.encode(payload));
-      final resp = await req.close().timeout(const Duration(minutes: 2));
-      await resp.drain<void>();
-      return resp.statusCode;
-    } catch (e, s) {
-      Log.w(_kTag, 'send-results json exception e=$e s=$s');
-      return 0;
-    } finally {
-      client.close(force: true);
-    }
-  }
-
-  Future<int> _httpGetStatus(String url) async {
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
-    try {
-      final req = await client.getUrl(Uri.parse(url));
-      final resp = await req.close().timeout(const Duration(seconds: 5));
-      await resp.drain<void>();
-      return resp.statusCode;
-    } finally {
-      client.close(force: true);
-    }
-  }
-
-  Future<bool> _cleanRemoteResults({
-    required String apiBaseUrl,
-    required String projectId,
-  }) async {
-    final candidateUris = <Uri>[
-      _buildApiUri(
-        apiBaseUrl,
-        '/clean-results',
-        projectId: projectId,
-      ),
-      _buildApiUriWithProjectInPath(
-        apiBaseUrl,
-        projectId,
-        '/clean-results',
-      ),
-      _buildApiUriWithProjectInPath(
-        apiBaseUrl,
-        projectId,
-        '/results/clean',
-      ),
-    ];
-
-    for (final uri in candidateUris) {
-      final status = await _httpGetStatus(uri.toString());
-      if (status >= 200 && status < 300) {
-        Log.i(_kTag, 'clean-remote-results success status=$status uri=$uri');
-        return true;
-      }
-      Log.w(_kTag, 'clean-remote-results failed status=$status uri=$uri');
-    }
-    return false;
-  }
-
-  bool _autoPublishEnabled() {
-    final value = environmentValue(_kAutoPublishEnabledEnvKey);
-    if (value == null) return false;
-    final normalized = value.trim().toLowerCase();
-    return normalized == '1' ||
-        normalized == 'true' ||
-        normalized == 'yes' ||
-        normalized == 'on';
-  }
-
-  Future<_AllureAutoPublishSettings> _resolveAutoPublishSettings() async {
-    final configJson = await _readConvenientTestConfigJson();
-    final configEnabled = _toNullableBool(configJson?[_kConfigEnableKey]);
-    final envEnabled = _autoPublishEnabled();
-    final enabled = configEnabled ?? envEnabled;
-
-    final configApiBaseUrl =
-        _toNullableString(configJson?[_kConfigApiBaseUrlKey]);
-    final envApiBaseUrl = environmentValue(_kAutoPublishApiBaseUrlEnvKey);
-    final apiBaseUrl = (() {
-      final raw = configApiBaseUrl ?? envApiBaseUrl;
-      if (raw == null || raw.trim().isEmpty) return _kDefaultDockerApiBaseUrl;
-      return raw;
-    })();
-
-    final configProjectId =
-        _toNullableString(configJson?[_kConfigProjectIdKey]);
-    final envProjectId = environmentValue(_kAutoPublishProjectIdEnvKey);
-    final configProjectPrefix =
-        _toNullableString(configJson?[_kConfigProjectPrefixKey]);
-    final envProjectPrefix = environmentValue(_kAutoPublishProjectPrefixEnvKey);
-    final configProjectEnv =
-        _toNullableString(configJson?[_kConfigProjectEnvKey]);
-    final configProjectRepo =
-        _toNullableString(configJson?[_kConfigProjectRepoKey]);
-    final envProjectEnv = _firstNonEmptyEnvironmentValue(const [
-      _kAutoPublishProjectEnvEnvKey,
-      'CONVENIENT_TEST_ENV',
-      'APP_ENV',
-      'ENVIRONMENT',
-      'FLAVOR',
-    ]);
-    final envProjectRepo = _firstNonEmptyEnvironmentValue(const [
-      _kAutoPublishProjectRepoEnvKey,
-      'GITHUB_REPOSITORY',
-    ]);
-
-    final projectId = await _resolveProjectId(
-      explicitProjectId: configProjectId ?? envProjectId,
-      projectPrefix: configProjectPrefix ?? envProjectPrefix,
-      explicitEnv: configProjectEnv ?? envProjectEnv,
-      explicitRepo: configProjectRepo ?? envProjectRepo,
-    );
-
-    return _AllureAutoPublishSettings(
-      enabled: enabled,
-      apiBaseUrl: apiBaseUrl,
-      projectId: projectId,
-    );
-  }
-
-  Future<Map<String, dynamic>?> _readConvenientTestConfigJson() async {
-    try {
-      final homeDirectory = environmentValue('HOME');
-      if (homeDirectory == null || homeDirectory.trim().isEmpty) return null;
-      final configFilePath = '$homeDirectory/.config/convenient_test.json';
-      final file = File(configFilePath);
-      if (!await file.exists()) return null;
-      final text = await file.readAsString();
-      final decoded = jsonDecode(text);
-      if (decoded is Map<String, dynamic>) return decoded;
-      return null;
-    } catch (e, s) {
-      Log.w(_kTag, 'read convenient_test.json failed e=$e s=$s');
-      return null;
-    }
-  }
-
-  bool? _toNullableBool(Object? value) {
-    if (value is bool) return value;
-    if (value is String) {
-      final normalized = value.trim().toLowerCase();
-      if (normalized == 'true' || normalized == '1' || normalized == 'yes') {
-        return true;
-      }
-      if (normalized == 'false' || normalized == '0' || normalized == 'no') {
-        return false;
-      }
-    }
-    return null;
-  }
-
-  String? _toNullableString(Object? value) {
-    if (value is! String) return null;
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) return null;
-    return trimmed;
-  }
-
-  Future<String> _resolveProjectId({
-    required String? explicitProjectId,
-    required String? projectPrefix,
-    required String? explicitEnv,
-    required String? explicitRepo,
-  }) async {
-    if (explicitProjectId != null && explicitProjectId.trim().isNotEmpty) {
-      return _normalizeProjectId(explicitProjectId);
-    }
-
-    final repoNameRaw = await _resolveRepoName(explicitRepo: explicitRepo);
-    final envNameRaw = _resolveEnvironmentName(explicitEnv: explicitEnv);
-    final repoName = _normalizeProjectId(repoNameRaw);
-    final envName = _normalizeProjectId(envNameRaw);
-    final prefix = projectPrefix?.trim();
-    final raw = [
-      if (prefix != null && prefix.isNotEmpty) prefix,
-      repoName.isEmpty ? 'project' : repoName,
-      Platform.operatingSystem,
-      envName.isEmpty ? 'unknown' : envName,
-    ].join('-');
-    final normalized = _normalizeProjectId(raw);
-    if (normalized.isEmpty) return _kDefaultProjectId;
-    return normalized;
-  }
-
-  Future<String> _resolveRepoName({required String? explicitRepo}) async {
-    final fromExplicit = _normalizeRepoNameCandidate(explicitRepo);
-    if (fromExplicit != null) return fromExplicit;
-
-    try {
-      final result = await Process.run(
-        'git',
-        ['rev-parse', '--show-toplevel'],
-        runInShell: true,
-      ).timeout(const Duration(seconds: 2));
-      if (result.exitCode == 0) {
-        final root = (result.stdout as String).trim();
-        final rootSegment = _lastPathSegment(root);
-        final normalized = _normalizeRepoNameCandidate(rootSegment);
-        if (normalized != null) return normalized;
-      }
-    } catch (_) {
-      // Fall back to current directory name.
-    }
-
-    final cwdName = _lastPathSegment(Directory.current.path);
-    return _normalizeRepoNameCandidate(cwdName) ?? 'project';
-  }
-
-  String _resolveEnvironmentName({required String? explicitEnv}) {
-    final normalized = _normalizeRepoNameCandidate(explicitEnv);
-    if (normalized != null) return normalized;
-    return 'unknown';
-  }
-
-  String? _normalizeRepoNameCandidate(String? raw) {
-    if (raw == null) return null;
-    final trimmed = raw.trim();
-    if (trimmed.isEmpty) return null;
-
-    // Support formats like "org/repo" from CI variables.
-    final last = _lastPathSegment(trimmed.replaceAll(':', '/'));
-    final clean = last.trim();
-    if (clean.isEmpty) return null;
-    return clean;
-  }
-
-  String? _firstNonEmptyEnvironmentValue(List<String> keys) {
-    for (final key in keys) {
-      final value = environmentValue(key);
-      if (value != null && value.trim().isNotEmpty) {
-        return value;
-      }
-    }
-    return null;
-  }
-
-  String _lastPathSegment(String path) {
-    final normalized = path.replaceAll('\\', '/');
-    final parts = normalized.split('/').where((e) => e.trim().isNotEmpty);
-    if (parts.isEmpty) return '';
-    return parts.last;
-  }
-
-  String _normalizeProjectId(String raw) {
-    final lower = raw.toLowerCase();
-    final buffer = StringBuffer();
-    var prevDash = false;
-    for (final code in lower.codeUnits) {
-      final isAlphaNum =
-          (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
-      final isAllowedPunct = code == 45;
-      if (isAlphaNum || isAllowedPunct) {
-        buffer.writeCharCode(code);
-        prevDash = false;
-      } else {
-        if (!prevDash) {
-          buffer.write('-');
-          prevDash = true;
-        }
-      }
-    }
-    var normalized = buffer.toString();
-    normalized = normalized.replaceAll(RegExp('^-+'), '');
-    normalized = normalized.replaceAll(RegExp('-+\$'), '');
-    normalized = normalized.replaceAll(RegExp('-{2,}'), '-');
-    if (normalized.length > 120) {
-      normalized = normalized.substring(0, 120);
-      normalized = normalized.replaceAll(RegExp('-+\$'), '');
-    }
-    return normalized;
   }
 
   void _resetState() {
@@ -2032,19 +1472,6 @@ class ManagerAllureReportService {
   int _uuidCounter = 0;
   final _consumedVideoAttachmentPaths = <String>{};
   final _lastSuiteInfoDigestBySuperRunId = <String, String>{};
-  final _lastAutoPublishedFingerprintByProject = <String, String>{};
-}
-
-class _AllureAutoPublishSettings {
-  final bool enabled;
-  final String apiBaseUrl;
-  final String projectId;
-
-  const _AllureAutoPublishSettings({
-    required this.enabled,
-    required this.apiBaseUrl,
-    required this.projectId,
-  });
 }
 
 class _PendingSnapshot {

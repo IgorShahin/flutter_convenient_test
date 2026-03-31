@@ -21,6 +21,21 @@ class HomePageRequestLogPanel extends StatefulWidget {
 class _HomePageRequestLogPanelState extends State<HomePageRequestLogPanel> {
   int? _selectedLogEntryId;
   _TraceDetailsTab _detailsTab = _TraceDetailsTab.overview;
+  late final TextEditingController _searchController;
+
+  String get _searchQuery => _searchController.text;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,10 +65,29 @@ class _HomePageRequestLogPanelState extends State<HomePageRequestLogPanel> {
           );
         }
 
-        final selectedTrace = traces.firstWhereOrNull(
+        final filteredTraces = traces
+            .where((trace) => trace.matchesQuery(_searchQuery))
+            .toList(growable: false);
+        if (filteredTraces.isEmpty) {
+          return Column(
+            children: [
+              _SearchBar(
+                controller: _searchController,
+                onChanged: _handleSearchChanged,
+              ),
+              const Expanded(
+                child: Center(
+                  child: Text('По текущему фильтру запросы не найдены'),
+                ),
+              ),
+            ],
+          );
+        }
+
+        final selectedTrace = filteredTraces.firstWhereOrNull(
               (trace) => trace.logEntryId == _selectedLogEntryId,
             ) ??
-            traces.first;
+            filteredTraces.first;
 
         return LayoutBuilder(
           builder: (context, constraints) {
@@ -63,10 +97,20 @@ class _HomePageRequestLogPanelState extends State<HomePageRequestLogPanel> {
                 children: [
                   SizedBox(
                     width: 340,
-                    child: _TraceListPane(
-                      traces: traces,
-                      selectedLogEntryId: selectedTrace.logEntryId,
-                      onSelected: _handleTraceSelected,
+                    child: Column(
+                      children: [
+                        _SearchBar(
+                          controller: _searchController,
+                          onChanged: _handleSearchChanged,
+                        ),
+                        Expanded(
+                          child: _TraceListPane(
+                            traces: filteredTraces,
+                            selectedLogEntryId: selectedTrace.logEntryId,
+                            onSelected: _handleTraceSelected,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const VerticalDivider(width: 1),
@@ -84,11 +128,21 @@ class _HomePageRequestLogPanelState extends State<HomePageRequestLogPanel> {
             return Column(
               children: [
                 SizedBox(
-                  height: 240,
-                  child: _TraceListPane(
-                    traces: traces,
-                    selectedLogEntryId: selectedTrace.logEntryId,
-                    onSelected: _handleTraceSelected,
+                  height: 292,
+                  child: Column(
+                    children: [
+                      _SearchBar(
+                        controller: _searchController,
+                        onChanged: _handleSearchChanged,
+                      ),
+                      Expanded(
+                        child: _TraceListPane(
+                          traces: filteredTraces,
+                          selectedLogEntryId: selectedTrace.logEntryId,
+                          onSelected: _handleTraceSelected,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const Divider(height: 1),
@@ -118,6 +172,10 @@ class _HomePageRequestLogPanelState extends State<HomePageRequestLogPanel> {
     setState(() => _detailsTab = tab);
   }
 
+  void _handleSearchChanged(String value) {
+    setState(() {});
+  }
+
   List<_HttpTrace> _collectHttpTraces({
     required LogStore logStore,
     required int testEntryId,
@@ -135,7 +193,11 @@ class _HomePageRequestLogPanelState extends State<HomePageRequestLogPanel> {
       if (httpSubEntries.isEmpty) {
         continue;
       }
-      traces.add(_HttpTrace.fromSubEntries(logEntryId, httpSubEntries));
+      final trace = _HttpTrace.fromSubEntries(logEntryId, httpSubEntries);
+      if (trace == null) {
+        continue;
+      }
+      traces.add(trace);
     }
     return traces.reversed.toList();
   }
@@ -188,7 +250,7 @@ class _HttpTrace {
     required this.durationMs,
   });
 
-  factory _HttpTrace.fromSubEntries(
+  static _HttpTrace? fromSubEntries(
       int logEntryId, List<LogSubEntry> subEntries) {
     final requestLineEntry = subEntries.firstWhereOrNull(
       (entry) => entry.title.contains('➡️'),
@@ -205,6 +267,12 @@ class _HttpTrace {
     final errorPayloadEntry = subEntries.lastWhereOrNull(
       (entry) => entry.title.toLowerCase().endsWith('error'),
     );
+
+    // Ignore malformed HTTP log entries that only contain payload fragments
+    // without a request/response headline. Otherwise the UI shows Unknown/Pending.
+    if (requestLineEntry == null && responseLineEntry == null) {
+      return null;
+    }
 
     final requestMatch = requestLineEntry == null
         ? null
@@ -263,6 +331,25 @@ class _HttpTrace {
       (errorPayload?.trim().isNotEmpty ?? false) ||
       statusCode == null ||
       (statusCode ?? 0) >= 400;
+
+  bool matchesQuery(String rawQuery) {
+    final query = rawQuery.trim().toLowerCase();
+    if (query.isEmpty) {
+      return true;
+    }
+
+    final haystack = <String>[
+      method,
+      path,
+      requestId ?? '',
+      statusCode?.toString() ?? '',
+      requestLine ?? '',
+      responseLine ?? '',
+      errorLine ?? '',
+    ].join('\n').toLowerCase();
+
+    return haystack.contains(query);
+  }
 }
 
 final _requestLineRegExp = RegExp(
@@ -299,6 +386,42 @@ class _TraceListPane extends StatelessWidget {
           onTap: () => onSelected(trace.logEntryId),
         );
       },
+    );
+  }
+}
+
+class _SearchBar extends StatelessWidget {
+  const _SearchBar({
+    required this.controller,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: 'Поиск по method / path / status / request id',
+          prefixIcon: const Icon(Icons.search, size: 18),
+          suffixIcon: controller.text.isEmpty
+              ? null
+              : IconButton(
+                  onPressed: () {
+                    controller.clear();
+                    onChanged('');
+                  },
+                  icon: const Icon(Icons.close, size: 18),
+                ),
+          border: const OutlineInputBorder(),
+        ),
+      ),
     );
   }
 }
@@ -660,6 +783,7 @@ class _InlineScrollableText extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       child: EnhancedSelectableText(
         text,
+        enableCopyAllButton: false,
         style: const TextStyle(
           fontFamily: 'RobotoMono',
           fontSize: 12,
@@ -702,6 +826,7 @@ class _ScrollableCodeBlock extends StatelessWidget {
                     ),
                     child: EnhancedSelectableText(
                       text,
+                      enableCopyAllButton: false,
                       style: const TextStyle(
                         fontFamily: 'RobotoMono',
                         fontSize: 12,
