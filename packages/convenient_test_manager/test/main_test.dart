@@ -5,6 +5,7 @@ import 'package:convenient_test_manager/components/home_page/header/header_panel
 import 'package:convenient_test_manager/main.dart';
 import 'package:convenient_test_manager/misc/setup.dart';
 import 'package:convenient_test_manager/services/misc_flutter_service.dart';
+import 'package:convenient_test_manager/stores/highlight_store.dart';
 import 'package:convenient_test_manager/stores/home_page_store.dart';
 import 'package:convenient_test_manager_dart/services/vm_service_wrapper_service.dart';
 import 'package:flutter/material.dart';
@@ -17,10 +18,12 @@ Future<void> setupForTesting() async {
       registerVmServiceWrapper: false, initVLC: false, parseConfigFile: false);
 
   getIt.registerSingleton<VmServiceWrapperService>(FakeVmServiceWrapper());
+  getIt.get<HighlightStore>().enableAutoJump = false;
   Log.d('goldenMain', 'setup finished');
 }
 
 void main() async {
+  TestWidgetsFlutterBinding.ensureInitialized();
   await setupForTesting();
   // color scheme breaks goldens, so we need two variants
   await goldenMain(ThemeMode.light);
