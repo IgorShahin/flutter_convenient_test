@@ -61,12 +61,33 @@ class HomePageAllureCustomStepWidget extends StatelessWidget {
               ),
               const SizedBox(width: 6),
               Expanded(
-                child: Text(
-                  node.name,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    height: 1.25,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      node.name,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        height: 1.25,
+                      ),
+                    ),
+                    if (node.parameters.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      ...node.parameters.map(
+                        (parameter) => Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: Text(
+                            '${parameter.name}: ${parameter.value}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              height: 1.2,
+                              color: Theme.of(context).colorScheme.outline,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               if (node.parameterCount > 0)

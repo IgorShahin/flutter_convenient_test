@@ -110,7 +110,7 @@ class _AllureFixtureRuntime {
   int _nowMs() => DateTime.now().toUtc().millisecondsSinceEpoch;
 
   Map<String, dynamic> toJson() => {
-        'name': name,
+        'name': _displayName,
         'status': _status ?? 'passed',
         'stage': 'finished',
         'start': _startMs ?? _nowMs(),
@@ -118,6 +118,21 @@ class _AllureFixtureRuntime {
         'steps': _buildDisplaySteps(),
         'attachments': attachments,
       };
+
+  String get _displayName {
+    switch (name) {
+      case 'SETUP':
+        return 'setUp';
+      case 'SETUP_ALL':
+        return 'setUpAll';
+      case 'TEARDOWN':
+        return 'tearDown';
+      case 'TEARDOWN_ALL':
+        return 'tearDownAll';
+      default:
+        return name;
+    }
+  }
 
   List<Map<String, dynamic>> _buildDisplaySteps() {
     return steps;

@@ -136,6 +136,9 @@ class _AllureEventProcessor {
       }
 
       if (_isHiddenLifecycleStep(sub)) {
+        if (o._isBodyStartMarker(sub)) {
+          runtime.hasSeenBodyStart = true;
+        }
         runtime.logBuffer.writeln(o._formatRawLogLine(sub, subMs));
         continue;
       }

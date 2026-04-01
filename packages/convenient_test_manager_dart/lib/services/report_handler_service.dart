@@ -201,7 +201,11 @@ class ReportHandlerService {
       if (stepParameter != null) {
         final id = stepParameter['id']?.toString().trim() ?? '';
         if (id.isNotEmpty) {
-          customStepStore.addParameter(id: id);
+          customStepStore.addParameter(
+            id: id,
+            name: stepParameter['name']?.toString().trim() ?? '',
+            value: stepParameter['value']?.toString() ?? '',
+          );
         }
         return;
       }

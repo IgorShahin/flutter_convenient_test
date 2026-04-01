@@ -89,10 +89,18 @@ class AllureCustomStepStore {
 
   void addParameter({
     required String id,
+    required String name,
+    required String value,
   }) {
     final node = stepMap[id];
     if (node == null) return;
-    stepMap[id] = node.copyWith(parameterCount: node.parameterCount + 1);
+    stepMap[id] = node.copyWith(
+      parameterCount: node.parameterCount + 1,
+      parameters: [
+        ...node.parameters,
+        AllureCustomStepParameter(name: name, value: value),
+      ],
+    );
   }
 
   void addAttachment({
@@ -141,6 +149,7 @@ class AllureCustomStepNode {
   final int attachmentCount;
   final bool finished;
   final AllureCustomStepSection section;
+  final List<AllureCustomStepParameter> parameters;
 
   const AllureCustomStepNode({
     required this.id,
@@ -152,6 +161,7 @@ class AllureCustomStepNode {
     this.parameterCount = 0,
     this.attachmentCount = 0,
     this.finished = false,
+    this.parameters = const <AllureCustomStepParameter>[],
   });
 
   bool get hasChildren => childIds.isNotEmpty;
@@ -165,6 +175,7 @@ class AllureCustomStepNode {
     int? attachmentCount,
     bool? finished,
     AllureCustomStepSection? section,
+    List<AllureCustomStepParameter>? parameters,
   }) {
     return AllureCustomStepNode(
       id: id,
@@ -176,8 +187,19 @@ class AllureCustomStepNode {
       parameterCount: parameterCount ?? this.parameterCount,
       attachmentCount: attachmentCount ?? this.attachmentCount,
       finished: finished ?? this.finished,
+      parameters: parameters ?? this.parameters,
     );
   }
+}
+
+class AllureCustomStepParameter {
+  final String name;
+  final String value;
+
+  const AllureCustomStepParameter({
+    required this.name,
+    required this.value,
+  });
 }
 
 enum AllureCustomStepSection {
