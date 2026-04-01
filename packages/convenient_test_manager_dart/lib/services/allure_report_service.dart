@@ -621,12 +621,12 @@ class ManagerAllureReportService {
     }
 
     // Behavior tab mapping.
+    // TestOps Features view uses `feature` as the visible root level, so keep
+    // the top-most group there to preserve the expected hierarchy.
     addLabel('epic', normalized.first);
+    addLabel('feature', normalized.first);
     if (normalized.length >= 2) {
-      addLabel('feature', normalized[1]);
-    }
-    if (normalized.length >= 3) {
-      addLabel('story', normalized.sublist(2).join(' / '));
+      addLabel('story', normalized.sublist(1).join(' / '));
     }
 
     // Keep full hierarchy searchable and visible in custom labels/tags.
