@@ -33,23 +33,26 @@ class ManagerAllureReportService {
     await _clearAllureResults();
   }
 
-  Future<void> generateAndOpenSite() async {
+  Future<bool> generateAndOpenSite() async {
     if (!supportsIoPlatform) {
       Log.w(_kTag, 'generateAndOpenSite skipped on non-io runtime');
-      return;
+      return false;
     }
-    await generateLocalSiteIfPossible(openWhenDone: true);
+    return generateLocalSiteIfPossible(openWhenDone: true);
   }
 
-  Future<void> generateLocalSiteIfPossible({bool openWhenDone = false}) async {
+  Future<bool> generateLocalSiteIfPossible({bool openWhenDone = false}) async {
     if (!supportsIoPlatform) {
       Log.w(_kTag, 'generateLocalSiteIfPossible skipped on non-io runtime');
-      return;
+      return false;
     }
 
     await _ensureActiveRunContext();
     final resultsDirPath = _resultsDirPath;
-    if (resultsDirPath == null) return;
+    if (resultsDirPath == null) {
+      Log.w(_kTag, 'skip local allure generation: results dir path is null');
+      return false;
+    }
 
     final hasResults = Directory(resultsDirPath)
         .listSync()
@@ -57,7 +60,7 @@ class ManagerAllureReportService {
         .any((f) => f.path.endsWith('-result.json'));
     if (!hasResults) {
       Log.i(_kTag, 'skip local allure generation: no result files');
-      return;
+      return false;
     }
 
     final reportDirPath =
@@ -78,7 +81,7 @@ class ManagerAllureReportService {
           'stdout=${(result.stdout as Object?)?.toString().trim()} '
           'stderr=${(result.stderr as Object?)?.toString().trim()}',
         );
-        return;
+        return false;
       }
       Log.i(_kTag, 'local allure report generated at path=$reportDirPath');
     } catch (e, s) {
@@ -86,15 +89,19 @@ class ManagerAllureReportService {
         _kTag,
         'local allure generation skipped (is `allure` installed?) e=$e s=$s',
       );
-      return;
+      return false;
     }
 
-    if (!openWhenDone) return;
+    if (!openWhenDone) return true;
     final reportIndexPath = '$reportDirPath/index.html';
     final started =
         await _openUrlDetached(Uri.file(reportIndexPath).toString());
-    if (!started) return;
+    if (!started) {
+      Log.w(_kTag, 'local allure report open failed path=$reportIndexPath');
+      return false;
+    }
     Log.i(_kTag, 'local allure report opened path=$reportIndexPath');
+    return true;
   }
 
   Future<bool> openLatestReportSite() async {
@@ -110,8 +117,7 @@ class ManagerAllureReportService {
     final reportIndexPath = '$reportDirPath/index.html';
     final reportIndexFile = File(reportIndexPath);
     if (!reportIndexFile.existsSync()) {
-      await generateLocalSiteIfPossible(openWhenDone: true);
-      return true;
+      return generateLocalSiteIfPossible(openWhenDone: true);
     }
 
     final started =
@@ -143,8 +149,15 @@ class ManagerAllureReportService {
 
     _autoPublishInProgress = true;
     try {
-      await generateLocalSiteIfPossible(openWhenDone: false)
+      final generated = await generateLocalSiteIfPossible(openWhenDone: false)
           .timeout(_kGenerateOpenPublishTimeout);
+      if (!generated) {
+        Log.i(
+          _kTag,
+          'local allure generation skipped or failed superRunId=$superRunId',
+        );
+        return;
+      }
       _lastAutoPublishedSuperRunId = superRunId;
       Log.i(
         _kTag,

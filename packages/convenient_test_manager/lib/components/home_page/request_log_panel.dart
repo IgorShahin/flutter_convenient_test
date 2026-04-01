@@ -283,13 +283,17 @@ class _HttpTrace {
         ? null
         : _responseLineRegExp.firstMatch(responseLineEntry.title);
 
+    final rawRequestLine = requestLineEntry?.title;
+    final rawResponseLine = responseLineEntry?.title;
     final method = responseMatch?.namedGroup('method') ??
         requestMatch?.namedGroup('method') ??
         'HTTP';
-    final path = responseMatch?.namedGroup('path') ??
-        requestMatch?.namedGroup('path') ??
-        requestLineEntry?.title ??
-        'Unknown';
+    final path = _normalizeHttpPath(
+      responseMatch?.namedGroup('path') ??
+          requestMatch?.namedGroup('path') ??
+          rawRequestLine ??
+          'Unknown',
+    );
     final requestId =
         responseMatch?.namedGroup('id') ?? requestMatch?.namedGroup('id');
     final statusText = responseMatch?.namedGroup('status');
@@ -308,8 +312,14 @@ class _HttpTrace {
     return _HttpTrace(
       logEntryId: logEntryId,
       timeline: subEntries,
-      requestLine: requestLineEntry?.title,
-      responseLine: responseLineEntry?.title,
+      requestLine: _normalizeHttpLine(
+        line: rawRequestLine,
+        path: requestMatch?.namedGroup('path'),
+      ),
+      responseLine: _normalizeHttpLine(
+        line: rawResponseLine,
+        path: responseMatch?.namedGroup('path'),
+      ),
       errorLine: errorPayloadEntry?.title,
       requestPayload: requestPayloadEntry?.message,
       responsePayload: responsePayloadEntry?.message,
@@ -374,6 +384,31 @@ final _requestLineRegExp = RegExp(
 final _responseLineRegExp = RegExp(
   r'^HTTP(?:\s+#(?<id>\d+))?\s+⬅️\s+(?<status>[0-9]+(?:\s+ERROR)?|[A-Z_]+(?:\s+ERROR)?)\s+(?<method>[A-Z]+)\s+(?<path>.+?)(?:\s+\((?<durationMs>\d+)ms\))?$',
 );
+
+String _normalizeHttpPath(String path) {
+  final trimmed = path.trim();
+  if (trimmed.isEmpty) {
+    return trimmed;
+  }
+  try {
+    return Uri.decodeFull(trimmed);
+  } catch (_) {
+    return trimmed;
+  }
+}
+
+String? _normalizeHttpLine({
+  required String? line,
+  required String? path,
+}) {
+  if (line == null) {
+    return null;
+  }
+  if (path == null || path.isEmpty) {
+    return line;
+  }
+  return line.replaceFirst(path, _normalizeHttpPath(path));
+}
 
 String? _extractErrorType(String? errorPayload) {
   if (errorPayload == null || errorPayload.trim().isEmpty) {

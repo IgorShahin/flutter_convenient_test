@@ -107,9 +107,17 @@ class MiscFlutterService extends MiscDartService {
           AllurePublishUiState.publishing;
     });
     try {
-      await allureService
-          .generateLocalSiteIfPossible(openWhenDone: true)
+      final opened = await allureService
+          .openLatestReportSite()
           .timeout(_kOpenAllurePublishTimeout);
+      if (!opened) {
+        runInAction(() {
+          homePageStore.allurePublishUiState.value =
+              AllurePublishUiState.failed;
+        });
+        Log.w(_kTag, 'openAllureReportSite failed: report was not opened');
+        return;
+      }
       runInAction(() {
         homePageStore.allurePublishUiState.value =
             AllurePublishUiState.published;
