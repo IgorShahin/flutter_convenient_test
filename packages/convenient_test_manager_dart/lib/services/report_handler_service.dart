@@ -140,6 +140,11 @@ class ReportHandlerService {
         logEntryId: requestId,
         subEntries: visibleSubEntries);
 
+    GetIt.I.get<AllureCustomStepStore>().linkLogEntry(
+          testEntryId: testEntryId,
+          logEntryId: requestId,
+        );
+
     GetIt.I
         .get<HighlightStoreBase>()
         .handleLogEntry(testEntryId: testEntryId, logEntryId: requestId);

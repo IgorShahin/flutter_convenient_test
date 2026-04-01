@@ -28,6 +28,9 @@ abstract class _HomePageStore with Store {
   final allureStepExpandMap =
       ObservableDefaultMap<String, bool>(createDefaultValue: (_) => true);
 
+  final allureStepDetailsExpandMap =
+      ObservableDefaultMap<String, bool>(createDefaultValue: (_) => false);
+
   final allureStepErrorExpandMap =
       ObservableDefaultMap<String, bool>(createDefaultValue: (_) => false);
 

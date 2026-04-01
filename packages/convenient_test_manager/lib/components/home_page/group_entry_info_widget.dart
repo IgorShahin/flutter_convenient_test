@@ -299,16 +299,20 @@ class _TestInfoSectionBuilder extends StaticSectionBuilder {
       final setupRows = _flattenAllureCustomStepRows(
         customStepStore,
         section: AllureCustomStepSection.setup,
+        startOrder: 0,
       );
+      final startLogEntryIds = _startMarkerLogEntryIds();
+      final bodyStartOrder = setupRows.length + startLogEntryIds.length;
       final bodyRows = _flattenAllureCustomStepRows(
         customStepStore,
         section: AllureCustomStepSection.body,
+        startOrder: bodyStartOrder,
       );
-      final errorLogEntryIds = _errorLikeResidualLogEntryIds();
+      final tailLogEntryIds = _tailResidualLogEntryIds();
       if (setupRows.isNotEmpty ||
           bodyRows.isNotEmpty ||
-          errorLogEntryIds.isNotEmpty) {
-        var orderOffset = 0;
+          startLogEntryIds.isNotEmpty ||
+          tailLogEntryIds.isNotEmpty) {
         if (setupRows.isNotEmpty) {
           yield StaticSection.single(
             child: _buildPhaseHeader(_calcSetupGroupLabel()),
@@ -319,12 +323,29 @@ class _TestInfoSectionBuilder extends StaticSectionBuilder {
             ),
             count: setupRows.length,
             builder: (_, i) => HomePageAllureCustomStepWidget(
-              order: orderOffset + i,
+              order: setupRows[i].order,
+              testEntryId: info.id,
               node: setupRows[i].node,
               depth: setupRows[i].depth,
             ),
           );
-          orderOffset += setupRows.length;
+        }
+        if (startLogEntryIds.isNotEmpty) {
+          final setupGroupLabel = _calcSetupGroupLabel();
+          yield StaticSection(
+            metadata: TestInfoLogEntrySectionMetadata(
+              testInfoId: info.id,
+            ),
+            count: startLogEntryIds.length,
+            builder: (_, i) => HomePageLogEntryWidget(
+              order: setupRows.length + i,
+              testEntryId: info.id,
+              logEntryId: startLogEntryIds[i],
+              running: false,
+              isSetupPhase: false,
+              setupGroupLabel: setupGroupLabel,
+            ),
+          );
         }
         if (bodyRows.isNotEmpty) {
           yield StaticSection(
@@ -333,24 +354,25 @@ class _TestInfoSectionBuilder extends StaticSectionBuilder {
             ),
             count: bodyRows.length,
             builder: (_, i) => HomePageAllureCustomStepWidget(
-              order: orderOffset + i,
+              order: bodyRows[i].order,
+              testEntryId: info.id,
               node: bodyRows[i].node,
               depth: bodyRows[i].depth,
             ),
           );
-          orderOffset += bodyRows.length;
         }
-        if (errorLogEntryIds.isNotEmpty) {
+        if (tailLogEntryIds.isNotEmpty) {
           final setupGroupLabel = _calcSetupGroupLabel();
+          final tailOrderStart = bodyStartOrder + bodyRows.length;
           yield StaticSection(
             metadata: TestInfoLogEntrySectionMetadata(
               testInfoId: info.id,
             ),
-            count: errorLogEntryIds.length,
+            count: tailLogEntryIds.length,
             builder: (_, i) => HomePageLogEntryWidget(
-              order: orderOffset + i,
+              order: tailOrderStart + i,
               testEntryId: info.id,
-              logEntryId: errorLogEntryIds[i],
+              logEntryId: tailLogEntryIds[i],
               running: false,
               isSetupPhase: false,
               setupGroupLabel: setupGroupLabel,
@@ -465,6 +487,36 @@ class _TestInfoSectionBuilder extends StaticSectionBuilder {
     }).toList(growable: false);
   }
 
+  List<int> _startMarkerLogEntryIds() {
+    final logStore = GetIt.I.get<LogStore>();
+    return visibleLogEntryIds.where((logEntryId) {
+      final subEntryIds = logStore.logSubEntryInEntry[logEntryId];
+      if (subEntryIds == null || subEntryIds.isEmpty) return false;
+      return subEntryIds.any(
+        (id) => logStore.logSubEntryMap[id]?.type == LogSubEntryType.TEST_START,
+      );
+    }).toList(growable: false);
+  }
+
+  List<int> _endMarkerLogEntryIds() {
+    final logStore = GetIt.I.get<LogStore>();
+    return visibleLogEntryIds.where((logEntryId) {
+      final subEntryIds = logStore.logSubEntryInEntry[logEntryId];
+      if (subEntryIds == null || subEntryIds.isEmpty) return false;
+      return subEntryIds.any(
+        (id) => logStore.logSubEntryMap[id]?.type == LogSubEntryType.TEST_END,
+      );
+    }).toList(growable: false);
+  }
+
+  List<int> _tailResidualLogEntryIds() {
+    final endIds = _endMarkerLogEntryIds().toSet();
+    final errorIds = _errorLikeResidualLogEntryIds().toSet();
+    return visibleLogEntryIds
+        .where((id) => endIds.contains(id) || errorIds.contains(id))
+        .toList(growable: false);
+  }
+
   String _calcSetupGroupLabel() {
     final suiteInfo = GetIt.I.get<SuiteInfoStore>().suiteInfo;
     if (suiteInfo == null) return 'SETUP';
@@ -491,14 +543,20 @@ class _TestInfoSectionBuilder extends StaticSectionBuilder {
   List<_AllureCustomStepRow> _flattenAllureCustomStepRows(
     AllureCustomStepStore store, {
     required AllureCustomStepSection section,
+    required int startOrder,
   }) {
     final homePageStore = GetIt.I.get<HomePageStore>();
     final rows = <_AllureCustomStepRow>[];
+    var nextOrder = startOrder;
 
     void visit(String stepId, int depth) {
       final node = store.stepById(stepId);
       if (node == null) return;
-      rows.add(_AllureCustomStepRow(node: node, depth: depth));
+      rows.add(_AllureCustomStepRow(
+        order: nextOrder++,
+        node: node,
+        depth: depth,
+      ));
       if (!node.hasChildren || !homePageStore.allureStepExpandMap[node.id]) {
         return;
       }
@@ -523,10 +581,12 @@ class TestInfoLogEntrySectionMetadata {
 }
 
 class _AllureCustomStepRow {
+  final int order;
   final AllureCustomStepNode node;
   final int depth;
 
   const _AllureCustomStepRow({
+    required this.order,
     required this.node,
     required this.depth,
   });

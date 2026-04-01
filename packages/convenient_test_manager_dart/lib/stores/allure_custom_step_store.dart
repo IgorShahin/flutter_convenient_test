@@ -123,6 +123,23 @@ class AllureCustomStepStore {
     );
   }
 
+  void linkLogEntry({
+    required int testEntryId,
+    required int logEntryId,
+  }) {
+    final openIds = openStepIdsByTest[testEntryId];
+    if (openIds == null || openIds.isEmpty) return;
+
+    for (final stepId in openIds) {
+      final node = stepMap[stepId];
+      if (node == null) continue;
+      if (node.linkedLogEntryIds.contains(logEntryId)) continue;
+      stepMap[stepId] = node.copyWith(
+        linkedLogEntryIds: [...node.linkedLogEntryIds, logEntryId],
+      );
+    }
+  }
+
   void _bubbleStatus(String stepId, String status) {
     var currentId = stepMap[stepId]?.parentId;
     while (currentId != null) {
@@ -163,6 +180,7 @@ class AllureCustomStepNode {
   final AllureCustomStepSection section;
   final List<AllureCustomStepParameter> parameters;
   final String? errorText;
+  final List<int> linkedLogEntryIds;
 
   const AllureCustomStepNode({
     required this.id,
@@ -176,6 +194,7 @@ class AllureCustomStepNode {
     this.finished = false,
     this.parameters = const <AllureCustomStepParameter>[],
     this.errorText,
+    this.linkedLogEntryIds = const <int>[],
   });
 
   bool get hasChildren => childIds.isNotEmpty;
@@ -191,6 +210,7 @@ class AllureCustomStepNode {
     AllureCustomStepSection? section,
     List<AllureCustomStepParameter>? parameters,
     String? errorText,
+    List<int>? linkedLogEntryIds,
   }) {
     return AllureCustomStepNode(
       id: id,
@@ -204,6 +224,7 @@ class AllureCustomStepNode {
       finished: finished ?? this.finished,
       parameters: parameters ?? this.parameters,
       errorText: errorText ?? this.errorText,
+      linkedLogEntryIds: linkedLogEntryIds ?? this.linkedLogEntryIds,
     );
   }
 }
