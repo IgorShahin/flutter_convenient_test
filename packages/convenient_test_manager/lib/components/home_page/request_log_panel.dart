@@ -410,6 +410,31 @@ String? _normalizeHttpLine({
   return line.replaceFirst(path, _normalizeHttpPath(path));
 }
 
+String _normalizeTimelineTitle(
+  String title, {
+  required String resolvedPath,
+}) {
+  final requestMatch = _requestLineRegExp.firstMatch(title);
+  if (requestMatch != null) {
+    final rawPath = requestMatch.namedGroup('path');
+    if (rawPath != null && rawPath.isNotEmpty) {
+      return title.replaceFirst(rawPath, resolvedPath);
+    }
+    return title;
+  }
+
+  final responseMatch = _responseLineRegExp.firstMatch(title);
+  if (responseMatch != null) {
+    final rawPath = responseMatch.namedGroup('path');
+    if (rawPath != null && rawPath.isNotEmpty) {
+      return title.replaceFirst(rawPath, resolvedPath);
+    }
+    return title;
+  }
+
+  return title;
+}
+
 String? _extractErrorType(String? errorPayload) {
   if (errorPayload == null || errorPayload.trim().isEmpty) {
     return null;
@@ -662,8 +687,10 @@ class _TraceDetailsPane extends StatelessWidget {
         return ListView.separated(
           itemCount: trace.timeline.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, index) =>
-              _TimelineTile(subEntry: trace.timeline[index]),
+          itemBuilder: (context, index) => _TimelineTile(
+            subEntry: trace.timeline[index],
+            trace: trace,
+          ),
         );
     }
   }
@@ -758,14 +785,22 @@ class _TraceOverview extends StatelessWidget {
 }
 
 class _TimelineTile extends StatelessWidget {
-  const _TimelineTile({required this.subEntry});
+  const _TimelineTile({
+    required this.subEntry,
+    required this.trace,
+  });
 
   final LogSubEntry subEntry;
+  final _HttpTrace trace;
 
   @override
   Widget build(BuildContext context) {
     final timeText = DateTime.fromMicrosecondsSinceEpoch(subEntry.time.toInt())
         .toIso8601String();
+    final normalizedTitle = _normalizeTimelineTitle(
+      subEntry.title,
+      resolvedPath: trace.path,
+    );
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -776,7 +811,7 @@ class _TimelineTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            subEntry.title,
+            normalizedTitle,
             style: const TextStyle(
               fontFamily: 'RobotoMono',
               fontWeight: FontWeight.w700,

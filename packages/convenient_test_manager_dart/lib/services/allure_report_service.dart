@@ -227,6 +227,14 @@ class ManagerAllureReportService {
     final logEntryId = request.id.toInt();
     _testNameByLogEntryId[logEntryId] = request.testName;
     if (_isSetUpAllServiceTestName(request.testName)) {
+      if (_isPureHttpLogEntry(request)) {
+        for (final sub in request.subEntries) {
+          final subMs = _usToMs(sub.time.toInt());
+          _deferredSetUpAllLogBuffer.writeln(_formatRawLogLine(sub, subMs));
+        }
+        _drainPendingSnapshots(logEntryId, request.testName);
+        return;
+      }
       _runtimeUuidByLogEntryId.remove(logEntryId);
       _deferredSetUpAllLastStepIndexByLogEntryId.remove(logEntryId);
       for (final sub in request.subEntries) {
@@ -255,6 +263,19 @@ class ManagerAllureReportService {
     _runtimeUuidByLogEntryId[logEntryId] = runtime.uuid;
     _lastStepPointerByLogEntryId.remove(logEntryId);
 
+    if (_isPureHttpLogEntry(request)) {
+      for (final sub in request.subEntries) {
+        final subMs = _usToMs(sub.time.toInt());
+        runtime.touchAt(subMs);
+        runtime.logBuffer.writeln(_formatRawLogLine(sub, subMs));
+      }
+      _attachHttpLogEntryToPendingCheck(runtime: runtime, request: request);
+      _drainPendingSnapshots(logEntryId, request.testName);
+      return;
+    }
+
+    var hasHttpCheckMarker = false;
+
     for (final sub in request.subEntries) {
       final subMs = _usToMs(sub.time.toInt());
       runtime.touchAt(subMs);
@@ -278,6 +299,14 @@ class ManagerAllureReportService {
       _lastStepPointerByLogEntryId[logEntryId] = pointer;
       _lastOpenStepPointerByRuntimeUuid[runtime.uuid] = pointer;
       runtime.logBuffer.writeln(_formatRawLogLine(sub, subMs));
+      if (_isHttpCheckMarker(sub)) {
+        runtime.pendingHttpCheckPointer = pointer;
+        hasHttpCheckMarker = true;
+      }
+    }
+
+    if (!hasHttpCheckMarker) {
+      runtime.pendingHttpCheckPointer = null;
     }
 
     _drainPendingSnapshots(logEntryId, request.testName);
@@ -1013,6 +1042,167 @@ class ManagerAllureReportService {
         '${sub.stackTrace.isEmpty ? '' : '\nSTACK: ${sub.stackTrace}'}';
   }
 
+  bool _isPureHttpLogEntry(LogEntry request) {
+    if (request.subEntries.isEmpty) return false;
+    return request.subEntries.every((sub) => _isHttpTitle(sub.title));
+  }
+
+  bool _isHttpTitle(String title) {
+    final upper = title.trim().toUpperCase();
+    return upper.startsWith('HTTP');
+  }
+
+  bool _isHttpCheckMarker(LogSubEntry sub) {
+    return sub.title.trim().toUpperCase() == 'HTTP CHECK';
+  }
+
+  void _attachHttpLogEntryToPendingCheck({
+    required _AllureTestRuntime runtime,
+    required LogEntry request,
+  }) {
+    final parentPointer = runtime.pendingHttpCheckPointer;
+    if (parentPointer == null || request.subEntries.isEmpty) return;
+
+    final parentSteps = _stepsForPointer(runtime, parentPointer);
+    if (parentSteps == null ||
+        parentPointer.index < 0 ||
+        parentPointer.index >= parentSteps.length) {
+      runtime.pendingHttpCheckPointer = null;
+      return;
+    }
+
+    final nestedStep = _buildHttpDiagnosticStep(request);
+    final parentStep = parentSteps[parentPointer.index];
+    final nestedSteps =
+        (parentStep['steps'] as List?)?.cast<Map<String, dynamic>>() ??
+            <Map<String, dynamic>>[];
+    nestedSteps.add(nestedStep);
+    parentStep['steps'] = nestedSteps;
+
+    final nestedStart = (nestedStep['start'] as int?) ?? runtime.startMs;
+    final nestedStop = (nestedStep['stop'] as int?) ?? nestedStart;
+    final parentStart = (parentStep['start'] as int?) ?? nestedStart;
+    final parentStop = (parentStep['stop'] as int?) ?? nestedStop;
+    parentStep['start'] = min(parentStart, nestedStart);
+    parentStep['stop'] = max(parentStop, nestedStop);
+
+    final nestedStatus = (nestedStep['status'] as String?) ?? 'passed';
+    if (nestedStatus == 'failed' || nestedStatus == 'broken') {
+      parentStep['status'] = 'failed';
+    }
+
+    if (_isTerminalHttpLogEntry(request)) {
+      runtime.pendingHttpCheckPointer = null;
+    }
+  }
+
+  Map<String, dynamic> _buildHttpDiagnosticStep(LogEntry request) {
+    final firstSub = request.subEntries.first;
+    final startMs = _usToMs(firstSub.time.toInt());
+    final stopMs = _usToMs(request.subEntries.last.time.toInt());
+    final title = _normalizeHttpDiagnosticTitle(firstSub.title.trim());
+    final step = <String, dynamic>{
+      'name': title,
+      'status': _statusForHttpDiagnosticEntry(request),
+      'stage': 'finished',
+      'start': startMs,
+      'stop': max(startMs, stopMs),
+    };
+
+    final attachmentText = request.subEntries
+        .map(_formatHttpDiagnosticSubEntry)
+        .where((chunk) => chunk.trim().isNotEmpty)
+        .join('\n\n');
+    if (attachmentText.trim().isNotEmpty) {
+      step['attachments'] = [
+        _writeTextAttachment(
+          name: 'http-log',
+          content: attachmentText,
+        ),
+      ];
+    }
+
+    return step;
+  }
+
+  String _normalizeHttpDiagnosticTitle(String title) {
+    final requestMatch = RegExp(r'^HTTP(?:\s+#\d+)?\s+➡️\s+(?<rest>.+)$')
+        .firstMatch(title);
+    if (requestMatch != null) {
+      return 'HTTP request ${requestMatch.namedGroup('rest')!.trim()}';
+    }
+
+    final responseMatch = RegExp(r'^HTTP(?:\s+#\d+)?\s+⬅️\s+(?<rest>.+)$')
+        .firstMatch(title);
+    if (responseMatch != null) {
+      return 'HTTP response ${responseMatch.namedGroup('rest')!.trim()}';
+    }
+
+    return title;
+  }
+
+  String _statusForHttpDiagnosticEntry(LogEntry request) {
+    for (final sub in request.subEntries) {
+      final upper = sub.title.toUpperCase();
+      final responseMatch =
+          RegExp(r'⬅️\s+(?<status>[0-9]+|[A-Z_]+(?:\s+ERROR)?)')
+              .firstMatch(upper);
+      if (responseMatch != null) {
+        final rawStatus = responseMatch.namedGroup('status') ?? '';
+        final statusCode = int.tryParse(rawStatus.split(' ').first);
+        if (statusCode != null) {
+          return statusCode >= 400 ? 'failed' : 'passed';
+        }
+        if (rawStatus.contains('ERROR')) {
+          return 'failed';
+        }
+      }
+      if (sub.error.isNotEmpty || sub.stackTrace.isNotEmpty) {
+        return 'failed';
+      }
+    }
+    return 'passed';
+  }
+
+  bool _isTerminalHttpLogEntry(LogEntry request) {
+    return request.subEntries.any((sub) => sub.title.contains('⬅️'));
+  }
+
+  String _formatHttpDiagnosticSubEntry(LogSubEntry sub) {
+    final buffer = StringBuffer(_normalizeHttpDiagnosticTitle(sub.title.trim()));
+    final message = sub.message.trim();
+    if (message.isNotEmpty) {
+      buffer
+        ..writeln()
+        ..write(message);
+    }
+    if (sub.error.isNotEmpty) {
+      buffer
+        ..writeln()
+        ..write('ERROR: ${sub.error}');
+    }
+    if (sub.stackTrace.isNotEmpty) {
+      buffer
+        ..writeln()
+        ..write('STACK: ${sub.stackTrace}');
+    }
+    return buffer.toString();
+  }
+
+  Map<String, dynamic> _writeTextAttachment({
+    required String name,
+    required String content,
+  }) {
+    final source = _nextArtifactName('attachment', 'txt');
+    final path = '$_resultsDirPath$source';
+    File(path).writeAsStringSync(content, flush: true);
+    return {
+      'name': name,
+      'source': source,
+      'type': 'text/plain',
+    };
+  }
+
   void _drainPendingSnapshots(int logEntryId, String testName) {
     final pendingSnapshots = _pendingSnapshotsByLogEntryId.remove(logEntryId);
     if (pendingSnapshots == null) return;
@@ -1511,6 +1701,7 @@ class _AllureTestRuntime {
   String? resultPath;
   String? status;
   Map<String, dynamic>? statusDetails;
+  _AllureStepPointer? pendingHttpCheckPointer;
   bool finished = false;
   bool hasSeenBodyStart = false;
 
