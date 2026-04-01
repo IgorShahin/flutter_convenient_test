@@ -1089,11 +1089,25 @@ class ManagerAllureReportService {
       'start': subMs,
       'stop': subMs,
     };
-    if (sub.error.isNotEmpty || sub.stackTrace.isNotEmpty) {
+    if (_isExceptionLikeLogSubEntry(sub)) {
+      final message = _exceptionLikeMessage(sub);
+      final trace = _exceptionLikeTrace(sub);
       step['statusDetails'] = {
-        'message': sub.error,
-        'trace': sub.stackTrace,
+        'message': message,
+        'trace': trace,
       };
+      final details = <String>[
+        if (message.trim().isNotEmpty) message.trim(),
+        if (trace.trim().isNotEmpty) trace.trim(),
+      ].join('\n\n');
+      if (details.trim().isNotEmpty) {
+        step['attachments'] = [
+          _writeTextAttachment(
+            name: 'exception',
+            content: details,
+          ),
+        ];
+      }
     }
     return step;
   }
@@ -1603,10 +1617,34 @@ class ManagerAllureReportService {
   String _statusForLogSubEntry(LogSubEntry sub) {
     if (sub.type == LogSubEntryType.ASSERT_FAIL ||
         sub.error.isNotEmpty ||
-        sub.stackTrace.isNotEmpty) {
+        sub.stackTrace.isNotEmpty ||
+        _looksLikeErrorTitle(sub.title)) {
       return 'failed';
     }
     return 'passed';
+  }
+
+  bool _isExceptionLikeLogSubEntry(LogSubEntry sub) {
+    return _looksLikeErrorTitle(sub.title) ||
+        sub.error.isNotEmpty ||
+        sub.stackTrace.isNotEmpty;
+  }
+
+  bool _looksLikeErrorTitle(String title) {
+    final normalized = title.trim().toUpperCase();
+    return normalized == 'ERROR' ||
+        normalized.startsWith('ERROR ') ||
+        normalized.startsWith('EXCEPTION');
+  }
+
+  String _exceptionLikeMessage(LogSubEntry sub) {
+    if (sub.error.trim().isNotEmpty) return sub.error;
+    return sub.message;
+  }
+
+  String _exceptionLikeTrace(LogSubEntry sub) {
+    if (sub.stackTrace.trim().isNotEmpty) return sub.stackTrace;
+    return '';
   }
 
   String _allureStatusFromResult(String result) {
