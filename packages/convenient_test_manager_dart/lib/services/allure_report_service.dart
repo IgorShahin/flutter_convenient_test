@@ -302,6 +302,11 @@ class ManagerAllureReportService {
         continue;
       }
 
+      if (_shouldSkipErrorLikeSubEntry(runtime, sub)) {
+        runtime.logBuffer.writeln(_formatRawLogLine(sub, subMs));
+        continue;
+      }
+
       final step = _buildStep(sub, subMs);
       final routing = _hookRoutingFromLogSubEntry(
         runtime: runtime,
@@ -368,7 +373,23 @@ class ManagerAllureReportService {
     final wasFinished = runtime.finished;
     final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
     runtime.touchAt(nowMs);
-    runtime.status = runtime.status == 'failed' ? 'failed' : 'broken';
+    final runnerErrorStatus = _statusForRunnerError(request);
+    runtime.status = _mergeRuntimeStatus(
+      current: runtime.status,
+      incoming: runnerErrorStatus,
+    );
+
+    if (_shouldSkipRunnerErrorStep(runtime, request)) {
+      runtime.logBuffer.writeln('RUNNER ERROR: ${request.error}');
+      if (request.stackTrace.isNotEmpty) {
+        runtime.logBuffer.writeln(request.stackTrace);
+      }
+      if (wasFinished) {
+        _rewriteFinalizedRuntime(runtime);
+      }
+      return;
+    }
+
     runtime.statusDetails = {
       'message': request.error,
       'trace': request.stackTrace,
@@ -386,7 +407,7 @@ class ManagerAllureReportService {
         error: request.error,
         stackTrace: request.stackTrace,
         atMs: nowMs,
-        status: runtime.status ?? 'broken',
+        status: runnerErrorStatus,
       ),
     );
     runtime.logBuffer.writeln('RUNNER ERROR: ${request.error}');
@@ -1652,6 +1673,14 @@ class ManagerAllureReportService {
     return 'passed';
   }
 
+  String _statusForRunnerError(RunnerError request) {
+    final haystack = [request.error, request.stackTrace]
+        .where((e) => e.trim().isNotEmpty)
+        .join('\n')
+        .toLowerCase();
+    return _looksAssertionLikeText(haystack) ? 'failed' : 'broken';
+  }
+
   bool _isExceptionLikeLogSubEntry(LogSubEntry sub) {
     return _looksLikeErrorTitle(sub.title) ||
         sub.error.isNotEmpty ||
@@ -1671,12 +1700,89 @@ class ManagerAllureReportService {
         .join('\n')
         .toLowerCase();
 
+    return _looksAssertionLikeText(haystack);
+  }
+
+  bool _looksAssertionLikeText(String haystack) {
     return haystack.contains('pixel test failed') ||
         haystack.contains('golden ') ||
         haystack.contains('test failed. see exception logs above.') ||
         haystack.contains('expected:') ||
         haystack.contains('matcher:') ||
         haystack.contains('which:');
+  }
+
+  bool _shouldSkipErrorLikeSubEntry(
+    _AllureTestRuntime runtime,
+    LogSubEntry sub,
+  ) {
+    final normalizedTitle = sub.title.trim().toUpperCase();
+    if (normalizedTitle != 'ERROR' && normalizedTitle != 'EXCEPTION') {
+      return false;
+    }
+
+    final haystack = [sub.title, sub.message, sub.error, sub.stackTrace]
+        .where((e) => e.trim().isNotEmpty)
+        .join('\n')
+        .toLowerCase();
+    if (!haystack.contains('test failed. see exception logs above.')) {
+      return false;
+    }
+
+    return _hasDetailedErrorStep(runtime);
+  }
+
+  bool _shouldSkipRunnerErrorStep(
+    _AllureTestRuntime runtime,
+    RunnerError request,
+  ) {
+    if (!_hasDetailedErrorStep(runtime)) {
+      return false;
+    }
+    return true;
+  }
+
+  bool _hasDetailedErrorStep(_AllureTestRuntime runtime) {
+    bool hasDetailed(List<Map<String, dynamic>> steps) {
+      for (final step in steps) {
+        final stepName = ((step['name'] as String?) ?? '').trim().toUpperCase();
+        final attachments =
+            (step['attachments'] as List?)?.cast<Map<String, dynamic>>() ??
+                const <Map<String, dynamic>>[];
+        final hasExceptionAttachment =
+            attachments.any((e) => e['name'] == 'exception');
+        final statusDetails = step['statusDetails'] as Map<String, dynamic>?;
+        final message = ((statusDetails?['message'] as String?) ?? '').trim();
+        final trace = ((statusDetails?['trace'] as String?) ?? '').trim();
+        if ((stepName == 'ERROR' || stepName == 'EXCEPTION') &&
+            (hasExceptionAttachment ||
+                message.isNotEmpty ||
+                trace.isNotEmpty)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    return hasDetailed(runtime.steps) ||
+        runtime.beforeFixtures.values.any((e) => hasDetailed(e.steps)) ||
+        runtime.afterFixtures.values.any((e) => hasDetailed(e.steps));
+  }
+
+  String _mergeRuntimeStatus({
+    required String? current,
+    required String incoming,
+  }) {
+    if (current == null || current.isEmpty || current == 'unknown') {
+      return incoming;
+    }
+    if (current == 'broken' || incoming == 'broken') {
+      return 'broken';
+    }
+    if (current == 'failed' || incoming == 'failed') {
+      return 'failed';
+    }
+    return current;
   }
 
   String _exceptionLikeMessage(LogSubEntry sub) {
