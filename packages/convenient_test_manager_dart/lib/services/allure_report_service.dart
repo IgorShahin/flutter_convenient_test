@@ -265,7 +265,8 @@ class ManagerAllureReportService {
     }
     if (_isServiceTestName(request.testName)) return;
 
-    final runtime = _ensureActiveRuntime(request.testName);
+    final runtime = _runtimeForIncomingEvent(request.testName);
+    final wasFinished = runtime.finished;
     _runtimeUuidByLogEntryId[logEntryId] = runtime.uuid;
     _lastStepPointerByLogEntryId.remove(logEntryId);
 
@@ -325,6 +326,9 @@ class ManagerAllureReportService {
     }
 
     _drainPendingSnapshots(logEntryId, request.testName);
+    if (wasFinished) {
+      _rewriteFinalizedRuntime(runtime);
+    }
   }
 
   Future<void> _handleRunnerStateChange(RunnerStateChange request) async {
@@ -360,7 +364,8 @@ class ManagerAllureReportService {
     }
     if (_isServiceTestName(request.testName)) return;
 
-    final runtime = _ensureActiveRuntime(request.testName);
+    final runtime = _runtimeForIncomingEvent(request.testName);
+    final wasFinished = runtime.finished;
     final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
     runtime.touchAt(nowMs);
     runtime.status = runtime.status == 'failed' ? 'failed' : 'broken';
@@ -388,6 +393,9 @@ class ManagerAllureReportService {
     if (request.stackTrace.isNotEmpty) {
       runtime.logBuffer.writeln(request.stackTrace);
     }
+    if (wasFinished) {
+      _rewriteFinalizedRuntime(runtime);
+    }
   }
 
   void _handleRunnerMessage(RunnerMessage request) {
@@ -397,8 +405,11 @@ class ManagerAllureReportService {
           _isServiceTestName(request.testName)) {
         return;
       }
-      final runtime = _ensureActiveRuntime(request.testName);
+      final runtime = _runtimeForIncomingEvent(request.testName);
       runtime.customTags.addAll(customTags);
+      if (runtime.finished) {
+        _rewriteFinalizedRuntime(runtime);
+      }
       return;
     }
     if (_isSetUpAllServiceTestName(request.testName)) {
@@ -407,10 +418,14 @@ class ManagerAllureReportService {
     }
     if (_isServiceTestName(request.testName)) return;
 
-    final runtime = _ensureActiveRuntime(request.testName);
+    final runtime = _runtimeForIncomingEvent(request.testName);
+    final wasFinished = runtime.finished;
     final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
     runtime.touchAt(nowMs);
     runtime.logBuffer.writeln('RUNNER MESSAGE: ${request.message}');
+    if (wasFinished) {
+      _rewriteFinalizedRuntime(runtime);
+    }
   }
 
   Future<void> _handleSnapshot(Snapshot request) async {
@@ -1066,8 +1081,21 @@ class ManagerAllureReportService {
     );
     _runtimeByUuid[runtime.uuid] = runtime;
     _activeRuntimeByTestName[testName] = runtime;
+    _latestRuntimeByTestName[testName] = runtime;
     _injectDeferredSetUpAllDataIfNeeded(runtime);
     return runtime;
+  }
+
+  _AllureTestRuntime _runtimeForIncomingEvent(String testName) {
+    final active = _activeRuntimeByTestName[testName];
+    if (active != null) {
+      return active;
+    }
+    final latest = _latestRuntimeByTestName[testName];
+    if (latest != null) {
+      return latest;
+    }
+    return _ensureActiveRuntime(testName);
   }
 
   bool _isServiceTestName(String? testName) {
@@ -1851,9 +1879,86 @@ class ManagerAllureReportService {
     File(containerPath).writeAsStringSync(jsonEncode(container), flush: true);
   }
 
+  void _rewriteFinalizedRuntime(_AllureTestRuntime runtime) {
+    final resultPath = runtime.resultPath;
+    if (_resultsDirPath == null || resultPath == null || resultPath.isEmpty) {
+      return;
+    }
+
+    _rewriteRawLogAttachment(runtime);
+    final suiteGroupNames = _suiteGroupNamesForTest(runtime.testName);
+    _decorateSetupFixtureByGroups(
+      runtime: runtime,
+      suiteGroupNames: suiteGroupNames,
+    );
+    final displayName = _displayNameForTest(runtime.testName);
+
+    final labels = <Map<String, String>>[
+      {'name': 'framework', 'value': 'convenient_test'},
+      {'name': 'language', 'value': 'dart'},
+      {'name': 'host', 'value': Platform.localHostname},
+    ];
+    labels.addAll(_suiteLabelsForTest(runtime.testName));
+    labels.addAll(runtime.customTags.map((e) => {'name': 'tag', 'value': e}));
+
+    final result = <String, dynamic>{
+      'uuid': runtime.uuid,
+      'historyId': runtime.historyId,
+      'name': displayName,
+      'fullName': runtime.fullName,
+      'status': runtime.status ?? 'unknown',
+      'stage': 'finished',
+      'start': runtime.startMs,
+      'stop': runtime.stopMs,
+      'steps': runtime.steps,
+      'attachments': runtime.attachments,
+      'labels': labels,
+      'parameters': [
+        {
+          'name': 'retryAttempt',
+          'value': runtime.attemptIndex.toString(),
+        },
+      ],
+    };
+    if (runtime.statusDetails != null) {
+      result['statusDetails'] = runtime.statusDetails;
+    }
+
+    File(resultPath).writeAsStringSync(jsonEncode(result), flush: true);
+  }
+
+  void _rewriteRawLogAttachment(_AllureTestRuntime runtime) {
+    if (_resultsDirPath == null || runtime.logBuffer.isEmpty) return;
+
+    Map<String, dynamic>? rawLogAttachment;
+    for (final attachment in runtime.attachments) {
+      if (attachment['name'] == 'raw-log' &&
+          attachment['type'] == 'text/plain') {
+        rawLogAttachment = attachment;
+        break;
+      }
+    }
+
+    if (rawLogAttachment == null) {
+      final source = _nextArtifactName('attachment', 'txt');
+      runtime.attachments.add({
+        'name': 'raw-log',
+        'source': source,
+        'type': 'text/plain',
+      });
+      rawLogAttachment = runtime.attachments.last;
+    }
+
+    final source = rawLogAttachment['source'] as String?;
+    if (source == null || source.trim().isEmpty) return;
+    final path = '$_resultsDirPath$source';
+    File(path).writeAsStringSync(runtime.logBuffer.toString(), flush: true);
+  }
+
   void _resetState() {
     _activeRuntimeByTestName.clear();
     _attemptCountByTestName.clear();
+    _latestRuntimeByTestName.clear();
     _runtimeByUuid.clear();
     _testNameByLogEntryId.clear();
     _runtimeUuidByLogEntryId.clear();
@@ -1875,6 +1980,7 @@ class ManagerAllureReportService {
   void _resetRuntimeState() {
     _activeRuntimeByTestName.clear();
     _attemptCountByTestName.clear();
+    _latestRuntimeByTestName.clear();
     _runtimeByUuid.clear();
     _testNameByLogEntryId.clear();
     _runtimeUuidByLogEntryId.clear();
@@ -1928,6 +2034,7 @@ class ManagerAllureReportService {
 
   final _random = Random();
   final _activeRuntimeByTestName = <String, _AllureTestRuntime>{};
+  final _latestRuntimeByTestName = <String, _AllureTestRuntime>{};
   final _attemptCountByTestName = <String, int>{};
   final _runtimeByUuid = <String, _AllureTestRuntime>{};
   final _testNameByLogEntryId = <int, String>{};
