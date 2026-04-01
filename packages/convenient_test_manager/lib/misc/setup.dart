@@ -13,7 +13,6 @@ import 'package:convenient_test_manager_dart/services/vm_service_wrapper_service
 import 'package:convenient_test_manager_dart/stores/highlight_store.dart';
 import 'package:convenient_test_manager_dart/stores/video_player_store.dart';
 import 'package:get_it/get_it.dart';
-import 'package:media_kit/media_kit.dart';
 
 final getIt = GetIt.instance;
 
@@ -31,7 +30,8 @@ Future<void> setup({
     parseConfigFile: parseConfigFile,
   );
 
-  if (initVLC) MediaKit.ensureInitialized();
+  // Keep the parameter for API compatibility while video playback is disabled.
+  final _ = initVLC;
 
   getIt.registerSingleton<VideoPlayerStore>(VideoPlayerStore());
   getIt.registerSingleton<HighlightStore>(HighlightStore());

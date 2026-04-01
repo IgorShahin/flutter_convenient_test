@@ -126,16 +126,4 @@ class MiscFlutterService extends MiscDartService {
       Log.w(_kTag, 'openAllureReportSite publish failed e=$e s=$s');
     }
   }
-
-  Future<void> clearAllureHistory() async {
-    final allureService = GetIt.I.get<ManagerAllureReportService>();
-    try {
-      final ok = await allureService.clearRemoteHistory();
-      if (!ok) {
-        Log.w(_kTag, 'clearAllureHistory failed');
-      }
-    } catch (e, s) {
-      Log.w(_kTag, 'clearAllureHistory exception e=$e s=$s');
-    }
-  }
 }
