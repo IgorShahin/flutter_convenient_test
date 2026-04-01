@@ -143,7 +143,7 @@ abstract class WorkerSuperRunController {
   WorkerSuperRunStatus get superRunStatus;
 
   static String _createSuperRunId() {
-    return 'RUN-${DateFormat('yyyyMMdd-HHmmss').format(DateTime.now())}-${Random().nextInt(1000).toString().padLeft(3, '0')}';
+    return '${DateFormat('yyyy-MM-dd_HH-mm-ss').format(DateTime.now())}__RUN__${Random().nextInt(1000).toString().padLeft(3, '0')}';
   }
 }
 

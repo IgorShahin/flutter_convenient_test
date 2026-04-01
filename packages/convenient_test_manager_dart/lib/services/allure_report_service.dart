@@ -342,6 +342,15 @@ class ManagerAllureReportService {
 
   void _handleRunnerError(RunnerError request) {
     if (_isSetUpAllServiceTestName(request.testName)) {
+      final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
+      _deferredSetUpAllSteps.add(
+        _buildExceptionStep(
+          error: request.error,
+          stackTrace: request.stackTrace,
+          atMs: nowMs,
+          status: 'broken',
+        ),
+      );
       _deferredSetUpAllLogBuffer.writeln('RUNNER ERROR: ${request.error}');
       if (request.stackTrace.isNotEmpty) {
         _deferredSetUpAllLogBuffer.writeln(request.stackTrace);
@@ -358,6 +367,22 @@ class ManagerAllureReportService {
       'message': request.error,
       'trace': request.stackTrace,
     };
+    final prevPointer = _lastOpenStepPointerByRuntimeUuid.remove(runtime.uuid);
+    if (prevPointer != null) {
+      _closeStepPointer(
+        runtime: runtime,
+        pointer: prevPointer,
+        stopMs: nowMs,
+      );
+    }
+    runtime.steps.add(
+      _buildExceptionStep(
+        error: request.error,
+        stackTrace: request.stackTrace,
+        atMs: nowMs,
+        status: runtime.status ?? 'broken',
+      ),
+    );
     runtime.logBuffer.writeln('RUNNER ERROR: ${request.error}');
     if (request.stackTrace.isNotEmpty) {
       runtime.logBuffer.writeln(request.stackTrace);
@@ -1210,14 +1235,14 @@ class ManagerAllureReportService {
   }
 
   String _normalizeHttpDiagnosticTitle(String title) {
-    final requestMatch = RegExp(r'^HTTP(?:\s+#\d+)?\s+➡️\s+(?<rest>.+)$')
-        .firstMatch(title);
+    final requestMatch =
+        RegExp(r'^HTTP(?:\s+#\d+)?\s+➡️\s+(?<rest>.+)$').firstMatch(title);
     if (requestMatch != null) {
       return 'HTTP request ${requestMatch.namedGroup('rest')!.trim()}';
     }
 
-    final responseMatch = RegExp(r'^HTTP(?:\s+#\d+)?\s+⬅️\s+(?<rest>.+)$')
-        .firstMatch(title);
+    final responseMatch =
+        RegExp(r'^HTTP(?:\s+#\d+)?\s+⬅️\s+(?<rest>.+)$').firstMatch(title);
     if (responseMatch != null) {
       return 'HTTP response ${responseMatch.namedGroup('rest')!.trim()}';
     }
@@ -1248,12 +1273,48 @@ class ManagerAllureReportService {
     return 'passed';
   }
 
+  Map<String, dynamic> _buildExceptionStep({
+    required String error,
+    required String stackTrace,
+    required int atMs,
+    required String status,
+  }) {
+    final details = <String>[
+      if (error.trim().isNotEmpty) error.trim(),
+      if (stackTrace.trim().isNotEmpty) stackTrace.trim(),
+    ].join('\n\n');
+
+    final step = <String, dynamic>{
+      'name': 'EXCEPTION',
+      'status': status,
+      'stage': 'finished',
+      'start': atMs,
+      'stop': atMs,
+      'statusDetails': {
+        'message': error,
+        'trace': stackTrace,
+      },
+    };
+
+    if (details.trim().isNotEmpty) {
+      step['attachments'] = [
+        _writeTextAttachment(
+          name: 'exception',
+          content: details,
+        ),
+      ];
+    }
+
+    return step;
+  }
+
   bool _isTerminalHttpLogEntry(LogEntry request) {
     return request.subEntries.any((sub) => sub.title.contains('⬅️'));
   }
 
   String _formatHttpDiagnosticSubEntry(LogSubEntry sub) {
-    final buffer = StringBuffer(_normalizeHttpDiagnosticTitle(sub.title.trim()));
+    final buffer =
+        StringBuffer(_normalizeHttpDiagnosticTitle(sub.title.trim()));
     final message = sub.message.trim();
     if (message.isNotEmpty) {
       buffer
