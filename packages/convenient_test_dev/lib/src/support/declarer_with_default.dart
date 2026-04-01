@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 // ignore: implementation_imports
 import 'package:test_api/src/backend/declarer.dart';
@@ -11,13 +13,13 @@ class DeclarerWithDefault extends Declarer {
   @override
   void test(
     String name,
-    dynamic Function() body, {
+    FutureOr<dynamic> Function() body, {
+    Object? location,
     String? testOn,
     Timeout? timeout,
-    dynamic skip,
+    Object? skip,
     Map<String, dynamic>? onPlatform,
-    dynamic tags,
-    // TestLocation? location,
+    Object? tags,
     int? retry,
     bool solo = false,
   }) {
@@ -29,7 +31,6 @@ class DeclarerWithDefault extends Declarer {
       skip: skip,
       onPlatform: onPlatform,
       tags: tags,
-      // location: location,
       // NOTE use this for flaky test retrying, see #16
       retry: retry ?? defaultRetry,
       solo: solo,
@@ -40,12 +41,12 @@ class DeclarerWithDefault extends Declarer {
   void group(
     String name,
     void Function() body, {
+    Object? location,
     String? testOn,
     Timeout? timeout,
-    dynamic skip,
+    Object? skip,
     Map<String, dynamic>? onPlatform,
-    dynamic tags,
-    // TestLocation? location,
+    Object? tags,
     int? retry,
     bool solo = false,
   }) {
@@ -57,7 +58,6 @@ class DeclarerWithDefault extends Declarer {
       skip: skip,
       onPlatform: onPlatform,
       tags: tags,
-      // location: location,
       // NOTE use this for flaky test retrying, see #16
       retry: retry ?? defaultRetry,
       solo: solo,

@@ -39,36 +39,39 @@ class SpyDeclarer implements Declarer {
   Group build() => inner.build();
 
   @override
-  T declare<T>(T Function() body) => inner.declare(body);
+  T declare<T>(T Function() body, {Map<Symbol, Object?>? zoneValues}) =>
+      zoneValues == null
+          ? inner.declare(body)
+          : runZoned(body, zoneValues: zoneValues);
 
   @override
   void setUp(dynamic Function() callback) => inner.setUp(callback);
 
   @override
-  void setUpAll(dynamic Function() callback) => inner.setUpAll(
+  void setUpAll(FutureOr<dynamic> Function() callback, {Object? location}) =>
+      inner.setUpAll(
         callback,
-        // location: location,
       );
 
   @override
   void tearDown(dynamic Function() callback) => inner.tearDown(callback);
 
   @override
-  void tearDownAll(dynamic Function() callback) => inner.tearDownAll(
+  void tearDownAll(FutureOr<dynamic> Function() callback, {Object? location}) =>
+      inner.tearDownAll(
         callback,
-        // location: location,
       );
 
   @override
   void group(
     String name,
     void Function() body, {
+    Object? location,
     String? testOn,
     Timeout? timeout,
-    dynamic skip,
+    Object? skip,
     Map<String, dynamic>? onPlatform,
-    dynamic tags,
-    // TestLocation? location,
+    Object? tags,
     int? retry,
     bool solo = false,
   }) {
@@ -83,7 +86,6 @@ class SpyDeclarer implements Declarer {
       skip: skip,
       onPlatform: onPlatform,
       tags: tags,
-      // location: location,
       retry: retry,
       solo: solo,
     );
@@ -92,13 +94,13 @@ class SpyDeclarer implements Declarer {
   @override
   void test(
     String name,
-    dynamic Function() body, {
+    FutureOr<dynamic> Function() body, {
+    Object? location,
     String? testOn,
     Timeout? timeout,
-    dynamic skip,
+    Object? skip,
     Map<String, dynamic>? onPlatform,
-    dynamic tags,
-    // TestLocation? location,
+    Object? tags,
     int? retry,
     bool solo = false,
   }) {
@@ -111,7 +113,6 @@ class SpyDeclarer implements Declarer {
       skip: skip,
       onPlatform: onPlatform,
       tags: tags,
-      // location: location,
       retry: retry,
       solo: solo,
     );

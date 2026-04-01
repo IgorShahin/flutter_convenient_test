@@ -53,7 +53,7 @@ class WorkerVmEndpointHistoryService {
       if (json is! Map<String, dynamic>) return;
 
       final loadedHistory = (json['history'] as List<dynamic>? ?? const [])
-          .map((e) => WorkerVmEndpoint.fromJson(e))
+          .map(WorkerVmEndpoint.fromJson)
           .whereType<WorkerVmEndpoint>()
           .toList();
       final loadedLast = WorkerVmEndpoint.fromJson(json['last_used']);

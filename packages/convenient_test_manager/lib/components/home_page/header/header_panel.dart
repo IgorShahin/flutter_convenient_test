@@ -279,6 +279,7 @@ class _WorkerEndpointButton extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (history.isNotEmpty) ...[
+                      // ignore: deprecated_member_use
                       DropdownButtonFormField<String>(
                         value: selectedEndpoint,
                         decoration: const InputDecoration(
