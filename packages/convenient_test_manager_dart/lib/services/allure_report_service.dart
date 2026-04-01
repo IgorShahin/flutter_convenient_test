@@ -1619,7 +1619,7 @@ class ManagerAllureReportService {
       return 'failed';
     }
     if (_isExceptionLikeLogSubEntry(sub)) {
-      return 'broken';
+      return _isAssertionLikeException(sub) ? 'failed' : 'broken';
     }
     return 'passed';
   }
@@ -1635,6 +1635,20 @@ class ManagerAllureReportService {
     return normalized == 'ERROR' ||
         normalized.startsWith('ERROR ') ||
         normalized.startsWith('EXCEPTION');
+  }
+
+  bool _isAssertionLikeException(LogSubEntry sub) {
+    final haystack = [sub.title, sub.message, sub.error, sub.stackTrace]
+        .where((e) => e.trim().isNotEmpty)
+        .join('\n')
+        .toLowerCase();
+
+    return haystack.contains('pixel test failed') ||
+        haystack.contains('golden ') ||
+        haystack.contains('test failed. see exception logs above.') ||
+        haystack.contains('expected:') ||
+        haystack.contains('matcher:') ||
+        haystack.contains('which:');
   }
 
   String _exceptionLikeMessage(LogSubEntry sub) {
