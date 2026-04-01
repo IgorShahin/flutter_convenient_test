@@ -51,6 +51,7 @@ LogHandle convenientTestLog(
 }
 
 final _activeConvenientTestNames = <String>{};
+const _kTextAttachmentTitlePrefix = '__CT_TEXT_ATTACHMENT__:';
 
 void _updateActiveTestTracking(String testName, LogSubEntryType type) {
   switch (type) {
@@ -173,6 +174,42 @@ class LogHandle {
       }
     }
   }
+
+  Future<void> attachText({
+    required String name,
+    required String content,
+  }) async {
+    await update(
+      '$_kTextAttachmentTitlePrefix$name',
+      content,
+      printing: false,
+    );
+  }
+}
+
+Future<LogHandle> convenientTestLogWithTextAttachment(
+  String title,
+  String message, {
+  required String attachmentName,
+  required String attachmentContent,
+  LogSubEntryType? type,
+  String? error,
+  String? stackTrace,
+  LiveTest? liveTest,
+}) async {
+  final log = convenientTestLog(
+    title,
+    message,
+    type: type,
+    error: error,
+    stackTrace: stackTrace,
+    liveTest: liveTest,
+  );
+  await log.attachText(
+    name: attachmentName,
+    content: attachmentContent,
+  );
+  return log;
 }
 
 Future<T> _maybeRunAsync<T extends Object>(

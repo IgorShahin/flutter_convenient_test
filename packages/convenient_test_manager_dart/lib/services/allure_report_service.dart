@@ -15,6 +15,7 @@ class ManagerAllureReportService {
   static const _kTag = 'ManagerAllureReportService';
   static const _kGenerateOpenPublishTimeout = Duration(seconds: 20);
   static const _kVideoChunkSnapshotPrefix = '__ct_video_chunk__';
+  static const _kTextAttachmentTitlePrefix = '__CT_TEXT_ATTACHMENT__:';
 
   Future<void> save(ReportCollection request) async {
     if (!supportsIoPlatform) return;
@@ -239,6 +240,10 @@ class ManagerAllureReportService {
       _deferredSetUpAllLastStepIndexByLogEntryId.remove(logEntryId);
       for (final sub in request.subEntries) {
         final subMs = _usToMs(sub.time.toInt());
+        if (_isTextAttachmentMarker(sub)) {
+          _handleDeferredTextAttachment(logEntryId: logEntryId, sub: sub);
+          continue;
+        }
         final prevIndex =
             _deferredSetUpAllLastStepIndexByLogEntryId[logEntryId];
         if (prevIndex != null &&
@@ -284,6 +289,15 @@ class ManagerAllureReportService {
       if (prevPointer != null) {
         _closeStepPointer(
             runtime: runtime, pointer: prevPointer, stopMs: subMs);
+      }
+
+      if (_isTextAttachmentMarker(sub)) {
+        _attachTextAttachmentToCurrentContext(
+          runtime: runtime,
+          logEntryId: logEntryId,
+          sub: sub,
+        );
+        continue;
       }
 
       final step = _buildStep(sub, subMs);
@@ -1047,6 +1061,15 @@ class ManagerAllureReportService {
     return request.subEntries.every((sub) => _isHttpTitle(sub.title));
   }
 
+  bool _isTextAttachmentMarker(LogSubEntry sub) {
+    return sub.title.startsWith(_kTextAttachmentTitlePrefix);
+  }
+
+  String _textAttachmentName(LogSubEntry sub) {
+    final raw = sub.title.substring(_kTextAttachmentTitlePrefix.length).trim();
+    return raw.isEmpty ? 'attachment' : raw;
+  }
+
   bool _isHttpTitle(String title) {
     final upper = title.trim().toUpperCase();
     return upper.startsWith('HTTP');
@@ -1094,6 +1117,67 @@ class ManagerAllureReportService {
     if (_isTerminalHttpLogEntry(request)) {
       runtime.pendingHttpCheckPointer = null;
     }
+  }
+
+  void _handleDeferredTextAttachment({
+    required int logEntryId,
+    required LogSubEntry sub,
+  }) {
+    final attachmentName = _textAttachmentName(sub);
+    final stepIndex = _deferredSetUpAllLastStepIndexByLogEntryId[logEntryId];
+    if (stepIndex != null) {
+      _attachTextToStep(
+        steps: _deferredSetUpAllSteps,
+        stepIndex: stepIndex,
+        name: attachmentName,
+        content: sub.message,
+      );
+      return;
+    }
+
+    _deferredSetUpAllTextAttachments.add(
+      _PendingTextAttachment(
+        name: attachmentName,
+        content: sub.message,
+      ),
+    );
+  }
+
+  void _attachTextAttachmentToCurrentContext({
+    required _AllureTestRuntime runtime,
+    required int logEntryId,
+    required LogSubEntry sub,
+  }) {
+    final attachmentName = _textAttachmentName(sub);
+    final pointer = _lastStepPointerByLogEntryId[logEntryId] ??
+        _lastOpenStepPointerByRuntimeUuid[runtime.uuid];
+    if (pointer == null) {
+      runtime.attachments.add(
+        _writeTextAttachment(
+          name: attachmentName,
+          content: sub.message,
+        ),
+      );
+      return;
+    }
+
+    final steps = _stepsForPointer(runtime, pointer);
+    if (steps == null) {
+      runtime.attachments.add(
+        _writeTextAttachment(
+          name: attachmentName,
+          content: sub.message,
+        ),
+      );
+      return;
+    }
+
+    _attachTextToStep(
+      steps: steps,
+      stepIndex: pointer.index,
+      name: attachmentName,
+      content: sub.message,
+    );
   }
 
   Map<String, dynamic> _buildHttpDiagnosticStep(LogEntry request) {
@@ -1203,6 +1287,26 @@ class ManagerAllureReportService {
     };
   }
 
+  void _attachTextToStep({
+    required List<Map<String, dynamic>> steps,
+    required int stepIndex,
+    required String name,
+    required String content,
+  }) {
+    if (stepIndex < 0 || stepIndex >= steps.length) return;
+    final step = steps[stepIndex];
+    final attachments =
+        (step['attachments'] as List?)?.cast<Map<String, dynamic>>() ??
+            <Map<String, dynamic>>[];
+    attachments.add(
+      _writeTextAttachment(
+        name: name,
+        content: content,
+      ),
+    );
+    step['attachments'] = attachments;
+  }
+
   void _drainPendingSnapshots(int logEntryId, String testName) {
     final pendingSnapshots = _pendingSnapshotsByLogEntryId.remove(logEntryId);
     if (pendingSnapshots == null) return;
@@ -1275,6 +1379,14 @@ class ManagerAllureReportService {
         fixture: beforeFixture,
         snapshotName: 'SETUP_ALL:${attachment.name}',
         bytes: attachment.image,
+      );
+    }
+    for (final attachment in _deferredSetUpAllTextAttachments) {
+      beforeFixture.attachments.add(
+        _writeTextAttachment(
+          name: attachment.name,
+          content: attachment.content,
+        ),
       );
     }
     _deferredSetUpAllInjected = true;
@@ -1591,6 +1703,7 @@ class ManagerAllureReportService {
     _deferredSetUpAllSteps.clear();
     _deferredSetUpAllLastStepIndexByLogEntryId.clear();
     _deferredSetUpAllAttachments.clear();
+    _deferredSetUpAllTextAttachments.clear();
     _deferredSetUpAllLogBuffer = StringBuffer();
     _deferredSetUpAllInjected = false;
     _suiteInfo = null;
@@ -1611,6 +1724,7 @@ class ManagerAllureReportService {
     _deferredSetUpAllSteps.clear();
     _deferredSetUpAllLastStepIndexByLogEntryId.clear();
     _deferredSetUpAllAttachments.clear();
+    _deferredSetUpAllTextAttachments.clear();
     _deferredSetUpAllLogBuffer = StringBuffer();
     _deferredSetUpAllInjected = false;
     _suiteInfo = null;
@@ -1664,6 +1778,7 @@ class ManagerAllureReportService {
   final _deferredSetUpAllSteps = <Map<String, dynamic>>[];
   final _deferredSetUpAllLastStepIndexByLogEntryId = <int, int>{};
   final _deferredSetUpAllAttachments = <_PendingSnapshot>[];
+  final _deferredSetUpAllTextAttachments = <_PendingTextAttachment>[];
   StringBuffer _deferredSetUpAllLogBuffer = StringBuffer();
   bool _deferredSetUpAllInjected = false;
   SuiteInfo? _suiteInfo;
@@ -1684,6 +1799,16 @@ class _PendingSnapshot {
   const _PendingSnapshot({
     required this.name,
     required this.image,
+  });
+}
+
+class _PendingTextAttachment {
+  final String name;
+  final String content;
+
+  const _PendingTextAttachment({
+    required this.name,
+    required this.content,
   });
 }
 

@@ -21,6 +21,7 @@ class ReportHandlerService {
   static const _kTag = 'ReportHandlerService';
   static const _kVideoChunkSnapshotPrefix = '__ct_video_chunk__';
   static const _kStaleVideoTolerance = Duration(seconds: 1);
+  static const _kTextAttachmentTitlePrefix = '__CT_TEXT_ATTACHMENT__:';
 
   /// handle a report sent by the worker.
   /// doClear: if handleSuiteInfoProto should clear the already known suite info.
@@ -105,10 +106,17 @@ class ReportHandlerService {
     }
 
     final requestId = request.id.toInt();
+    final visibleSubEntries = request.subEntries
+        .where((sub) => !sub.title.startsWith(_kTextAttachmentTitlePrefix))
+        .toList(growable: false);
+    if (visibleSubEntries.isEmpty) {
+      return;
+    }
+
     _logStore.addLogEntry(
         testEntryId: testEntryId,
         logEntryId: requestId,
-        subEntries: request.subEntries);
+        subEntries: visibleSubEntries);
 
     GetIt.I
         .get<HighlightStoreBase>()
