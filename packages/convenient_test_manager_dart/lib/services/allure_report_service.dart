@@ -1615,11 +1615,11 @@ class ManagerAllureReportService {
   }
 
   String _statusForLogSubEntry(LogSubEntry sub) {
-    if (sub.type == LogSubEntryType.ASSERT_FAIL ||
-        sub.error.isNotEmpty ||
-        sub.stackTrace.isNotEmpty ||
-        _looksLikeErrorTitle(sub.title)) {
+    if (sub.type == LogSubEntryType.ASSERT_FAIL) {
       return 'failed';
+    }
+    if (_isExceptionLikeLogSubEntry(sub)) {
+      return 'broken';
     }
     return 'passed';
   }
