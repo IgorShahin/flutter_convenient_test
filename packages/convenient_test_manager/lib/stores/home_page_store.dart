@@ -34,11 +34,15 @@ abstract class _HomePageStore with Store {
   final allureStepErrorExpandMap =
       ObservableDefaultMap<String, bool>(createDefaultValue: (_) => false);
 
+  @observable
+  String? highlightAllureStepId;
+
   final allurePublishUiState = Observable(AllurePublishUiState.idle);
 }
 
 enum HomePageSecondaryPanelTab {
   screenshot,
+  attachments,
   requests,
   video,
   rawLog,
@@ -58,6 +62,8 @@ extension ExtHomePageSecondaryPanelTab on HomePageSecondaryPanelTab {
     switch (this) {
       case HomePageSecondaryPanelTab.screenshot:
         return 'Screenshots';
+      case HomePageSecondaryPanelTab.attachments:
+        return 'Attachments';
       case HomePageSecondaryPanelTab.requests:
         return 'Chuck';
       case HomePageSecondaryPanelTab.video:

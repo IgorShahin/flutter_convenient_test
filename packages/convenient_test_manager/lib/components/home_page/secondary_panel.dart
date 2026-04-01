@@ -1,3 +1,4 @@
+import 'package:convenient_test_manager/components/home_page/allure_attachment_panel.dart';
 import 'package:convenient_test_manager/components/home_page/raw_log_panel.dart';
 import 'package:convenient_test_manager/components/home_page/request_log_panel.dart';
 import 'package:convenient_test_manager/components/home_page/screenshot_panel.dart';
@@ -35,6 +36,8 @@ class HomePageSecondaryPanel extends StatelessWidget {
     switch (homePageStore.activeSecondaryPanelTab) {
       case HomePageSecondaryPanelTab.screenshot:
         return const HomePageScreenshotPanel();
+      case HomePageSecondaryPanelTab.attachments:
+        return const HomePageAllureAttachmentPanel();
       case HomePageSecondaryPanelTab.requests:
         return const HomePageRequestLogPanel();
       case HomePageSecondaryPanelTab.rawLog:

@@ -225,6 +225,7 @@ class ReportHandlerService {
             id: id,
             name: stepTextAttachment['name']?.toString(),
             content: stepTextAttachment['content']?.toString(),
+            kind: 'text',
           );
         }
         return;
@@ -240,6 +241,7 @@ class ReportHandlerService {
             id: id,
             name: stepJsonAttachment['name']?.toString(),
             content: stepJsonAttachment['content']?.toString(),
+            kind: 'json',
           );
         }
         return;

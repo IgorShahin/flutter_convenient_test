@@ -217,6 +217,7 @@ class HomePageLogEntryWidget extends StatelessWidget {
 
     highlightStore.highlightLogEntryId = targetState ? logEntryId : null;
     highlightStore.highlightTestEntryId = targetState ? testEntryId : null;
+    homePageStore.highlightAllureStepId = null;
     if (targetState && _isHttpLikeSubEntry(interestLogSubEntry)) {
       homePageStore.activeSecondaryPanelTab =
           HomePageSecondaryPanelTab.requests;

@@ -107,6 +107,7 @@ class AllureCustomStepStore {
     required String id,
     String? name,
     String? content,
+    String kind = 'text',
   }) {
     final node = stepMap[id];
     if (node == null) return;
@@ -120,6 +121,14 @@ class AllureCustomStepStore {
     stepMap[id] = node.copyWith(
       attachmentCount: node.attachmentCount + 1,
       errorText: nextErrorText,
+      attachments: [
+        ...node.attachments,
+        AllureCustomStepAttachment(
+          name: name?.trim().isNotEmpty == true ? name!.trim() : 'attachment',
+          content: content ?? '',
+          kind: kind,
+        ),
+      ],
     );
   }
 
@@ -181,6 +190,7 @@ class AllureCustomStepNode {
   final List<AllureCustomStepParameter> parameters;
   final String? errorText;
   final List<int> linkedLogEntryIds;
+  final List<AllureCustomStepAttachment> attachments;
 
   const AllureCustomStepNode({
     required this.id,
@@ -195,6 +205,7 @@ class AllureCustomStepNode {
     this.parameters = const <AllureCustomStepParameter>[],
     this.errorText,
     this.linkedLogEntryIds = const <int>[],
+    this.attachments = const <AllureCustomStepAttachment>[],
   });
 
   bool get hasChildren => childIds.isNotEmpty;
@@ -211,6 +222,7 @@ class AllureCustomStepNode {
     List<AllureCustomStepParameter>? parameters,
     String? errorText,
     List<int>? linkedLogEntryIds,
+    List<AllureCustomStepAttachment>? attachments,
   }) {
     return AllureCustomStepNode(
       id: id,
@@ -225,6 +237,7 @@ class AllureCustomStepNode {
       parameters: parameters ?? this.parameters,
       errorText: errorText ?? this.errorText,
       linkedLogEntryIds: linkedLogEntryIds ?? this.linkedLogEntryIds,
+      attachments: attachments ?? this.attachments,
     );
   }
 }
@@ -236,6 +249,18 @@ class AllureCustomStepParameter {
   const AllureCustomStepParameter({
     required this.name,
     required this.value,
+  });
+}
+
+class AllureCustomStepAttachment {
+  final String name;
+  final String content;
+  final String kind;
+
+  const AllureCustomStepAttachment({
+    required this.name,
+    required this.content,
+    required this.kind,
   });
 }
 

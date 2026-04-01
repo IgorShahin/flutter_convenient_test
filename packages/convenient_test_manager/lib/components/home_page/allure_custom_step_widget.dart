@@ -269,6 +269,7 @@ class HomePageAllureCustomStepWidget extends StatelessWidget {
     bool fromHover = false,
   }) {
     final highlightStore = GetIt.I.get<HighlightStore>();
+    final homePageStore = GetIt.I.get<HomePageStore>();
     final videoPlayerStore = GetIt.I.get<VideoPlayerStore>();
     final interestLogEntryId = _calcInterestLogEntryId();
     if (interestLogEntryId == null) return;
@@ -279,6 +280,11 @@ class HomePageAllureCustomStepWidget extends StatelessWidget {
 
     highlightStore.highlightLogEntryId = targetState ? interestLogEntryId : null;
     highlightStore.highlightTestEntryId = targetState ? testEntryId : null;
+    homePageStore.highlightAllureStepId = targetState ? node.id : null;
+    if (targetState && node.attachments.isNotEmpty) {
+      homePageStore.activeSecondaryPanelTab =
+          HomePageSecondaryPanelTab.attachments;
+    }
 
     if (targetState) {
       final logStore = GetIt.I.get<LogStore>();
