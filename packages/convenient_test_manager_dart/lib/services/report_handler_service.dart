@@ -22,6 +22,7 @@ class ReportHandlerService {
   static const _kVideoChunkSnapshotPrefix = '__ct_video_chunk__';
   static const _kStaleVideoTolerance = Duration(seconds: 1);
   static const _kTextAttachmentTitlePrefix = '__CT_TEXT_ATTACHMENT__:';
+  static const _kAllureTagsPrefix = '__CT_ALLURE_TAGS__:';
 
   /// handle a report sent by the worker.
   /// doClear: if handleSuiteInfoProto should clear the already known suite info.
@@ -136,6 +137,10 @@ class ReportHandlerService {
 
   Future<void> _handleRunnerMessage(RunnerMessage request) async {
     Log.d(_kTag, 'Message: ${request.message}');
+
+    if (request.message.startsWith(_kAllureTagsPrefix)) {
+      return;
+    }
 
     final testEntryId =
         _suiteInfoStore.suiteInfo?.getEntryIdFromName(request.testName);

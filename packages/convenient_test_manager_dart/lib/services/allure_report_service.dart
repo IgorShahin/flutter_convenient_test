@@ -16,6 +16,7 @@ class ManagerAllureReportService {
   static const _kGenerateOpenPublishTimeout = Duration(seconds: 20);
   static const _kVideoChunkSnapshotPrefix = '__ct_video_chunk__';
   static const _kTextAttachmentTitlePrefix = '__CT_TEXT_ATTACHMENT__:';
+  static const _kAllureTagsPrefix = '__CT_ALLURE_TAGS__:';
 
   Future<void> save(ReportCollection request) async {
     if (!supportsIoPlatform) return;
@@ -390,6 +391,16 @@ class ManagerAllureReportService {
   }
 
   void _handleRunnerMessage(RunnerMessage request) {
+    final customTags = _parseAllureTagsMarker(request.message);
+    if (customTags != null) {
+      if (_isSetUpAllServiceTestName(request.testName) ||
+          _isServiceTestName(request.testName)) {
+        return;
+      }
+      final runtime = _ensureActiveRuntime(request.testName);
+      runtime.customTags.addAll(customTags);
+      return;
+    }
     if (_isSetUpAllServiceTestName(request.testName)) {
       _deferredSetUpAllLogBuffer.writeln('RUNNER MESSAGE: ${request.message}');
       return;
@@ -555,6 +566,7 @@ class ManagerAllureReportService {
       {'name': 'host', 'value': Platform.localHostname},
     ];
     labels.addAll(_suiteLabelsForTest(runtime.testName));
+    labels.addAll(runtime.customTags.map((e) => {'name': 'tag', 'value': e}));
 
     final result = <String, dynamic>{
       'uuid': runtime.uuid,
@@ -627,13 +639,6 @@ class ManagerAllureReportService {
     addLabel('feature', normalized.first);
     if (normalized.length >= 2) {
       addLabel('story', normalized.sublist(1).join(' / '));
-    }
-
-    // Keep full hierarchy searchable and visible in custom labels/tags.
-    final groupPath = normalized.join(' / ');
-    addLabel('tag', 'groupPath:$groupPath');
-    for (var i = 0; i < normalized.length; i++) {
-      addLabel('tag', 'groupLevel${i + 1}:${normalized[i]}');
     }
 
     return labels;
@@ -1113,6 +1118,23 @@ class ManagerAllureReportService {
   String _textAttachmentName(LogSubEntry sub) {
     final raw = sub.title.substring(_kTextAttachmentTitlePrefix.length).trim();
     return raw.isEmpty ? 'attachment' : raw;
+  }
+
+  List<String>? _parseAllureTagsMarker(String message) {
+    if (!message.startsWith(_kAllureTagsPrefix)) return null;
+    final raw = message.substring(_kAllureTagsPrefix.length).trim();
+    if (raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return decoded
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toSet()
+          .toList(growable: false);
+    } catch (_) {
+      return const [];
+    }
   }
 
   bool _isHttpTitle(String title) {
@@ -1906,6 +1928,7 @@ class _AllureTestRuntime {
   final int attemptIndex;
   final List<Map<String, dynamic>> steps = [];
   final List<Map<String, dynamic>> attachments = [];
+  final Set<String> customTags = {};
   final Map<String, _AllureFixtureRuntime> beforeFixtures = {};
   final Map<String, _AllureFixtureRuntime> afterFixtures = {};
   final StringBuffer logBuffer = StringBuffer();

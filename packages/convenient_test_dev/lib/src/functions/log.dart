@@ -52,6 +52,7 @@ LogHandle convenientTestLog(
 
 final _activeConvenientTestNames = <String>{};
 const _kTextAttachmentTitlePrefix = '__CT_TEXT_ATTACHMENT__:';
+const _kAllureTagsPrefix = '__CT_ALLURE_TAGS__:';
 
 void _updateActiveTestTracking(String testName, LogSubEntryType type) {
   switch (type) {
@@ -210,6 +211,31 @@ Future<LogHandle> convenientTestLogWithTextAttachment(
     content: attachmentContent,
   );
   return log;
+}
+
+Future<void> convenientTestAddAllureTags(
+  Iterable<String> tags, {
+  LiveTest? liveTest,
+}) async {
+  final normalized = tags
+      .map((e) => e.trim())
+      .where((e) => e.isNotEmpty)
+      .toSet()
+      .toList(growable: false);
+  if (normalized.isEmpty) return;
+
+  final reporterService = WorkerReportSaverService.I;
+  if (reporterService == null) return;
+
+  final testName = (liveTest ?? Invoker.current!.liveTest).test.name;
+  await reporterService.report(
+    ReportItem(
+      runnerMessage: RunnerMessage(
+        testName: testName,
+        message: '$_kAllureTagsPrefix${jsonEncode(normalized)}',
+      ),
+    ),
+  );
 }
 
 Future<T> _maybeRunAsync<T extends Object>(
