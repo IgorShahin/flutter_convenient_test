@@ -11,8 +11,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_test/src/_matchers_io.dart';
 import 'package:path/path.dart' as p;
 
-typedef EnterTextWithoutReplaceLogCallback =
-    void Function(TextEditingValue oldValue, TextEditingValue newValue);
+typedef EnterTextWithoutReplaceLogCallback = void Function(
+    TextEditingValue oldValue, TextEditingValue newValue);
 
 extension ExtWidgetTesterEnterText on WidgetTester {
   Future<void> enterTextWithoutReplace(
@@ -53,8 +53,8 @@ extension ExtWidgetTesterEnterText on WidgetTester {
 /// When running `runAsyncEnhanced` and see exception, will call this checker.
 /// For example, you may want to ignore certain kinds of exceptions, such as network timeout
 // ignore: avoid-global-state
-void Function(Object?) convenientTestRunAsyncEnhancedExceptionChecker = (e) =>
-    expect(e, isNull);
+void Function(Object?) convenientTestRunAsyncEnhancedExceptionChecker =
+    (e) => expect(e, isNull);
 
 extension ExtWidgetTesterPump on WidgetTester {
   static const _kTag = 'ExtWidgetTester';
@@ -100,13 +100,14 @@ extension ExtWidgetTesterPump on WidgetTester {
     Duration? realDelayDuration,
     Duration? fakeClockTimeout,
     Duration? wallClockTimeout,
-  }) async => await pumpWithRunAsyncUntil(
-    () => !binding.hasScheduledFrame,
-    pumpDuration: pumpDuration,
-    realDelayDuration: realDelayDuration,
-    fakeClockTimeout: fakeClockTimeout,
-    wallClockTimeout: wallClockTimeout,
-  );
+  }) async =>
+      await pumpWithRunAsyncUntil(
+        () => !binding.hasScheduledFrame,
+        pumpDuration: pumpDuration,
+        realDelayDuration: realDelayDuration,
+        fakeClockTimeout: fakeClockTimeout,
+        wallClockTimeout: wallClockTimeout,
+      );
 
   // need `runAsync` between pumps, because when running in widget test, the time in pump is fake.
   // If we do not `runAsync` and *really* sleep, things like real network requests may not be able to be finished.
@@ -250,7 +251,9 @@ Future<void> debugWidgetTestSaveScreenshot([
     );
     final bytes = (await image.toByteData(
       format: ui.ImageByteFormat.png,
-    ))!.buffer.asUint8List();
+    ))!
+        .buffer
+        .asUint8List();
     final path = p.join(
       (goldenFileComparator as LocalFileComparator).basedir.path,
       '$stem.png',
@@ -277,10 +280,11 @@ class _WallAndFakeClock {
   _WallAndFakeClock add({
     required Duration wallClock,
     required Duration fakeClock,
-  }) => _WallAndFakeClock(
-    wallClock: this.wallClock.add(wallClock),
-    fakeClock: this.fakeClock.add(fakeClock),
-  );
+  }) =>
+      _WallAndFakeClock(
+        wallClock: this.wallClock.add(wallClock),
+        fakeClock: this.fakeClock.add(fakeClock),
+      );
 
   @override
   String toString() =>

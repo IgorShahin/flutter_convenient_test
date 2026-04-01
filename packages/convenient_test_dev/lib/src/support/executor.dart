@@ -69,8 +69,8 @@ class ResolvedExecutionFilter {
   }
 
   ResolvedExecutionFilterProto toProto() => ResolvedExecutionFilterProto(
-    allowExecuteTestNames: allowExecuteTestNames,
-  );
+        allowExecuteTestNames: allowExecuteTestNames,
+      );
 }
 
 class _ExecutionFilterResolver {

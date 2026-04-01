@@ -8,9 +8,8 @@ class SuiteInfoConverter {
 
   static SuiteInfoProto convert(SpyDeclarerGroup root) {
     final target = SuiteInfoProto();
-    target.groupId = SuiteInfoConverter._()
-        ._convertGroup(root, target, -1)
-        .toInt64();
+    target.groupId =
+        SuiteInfoConverter._()._convertGroup(root, target, -1).toInt64();
     return target;
   }
 

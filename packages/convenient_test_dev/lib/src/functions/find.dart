@@ -61,13 +61,14 @@ extension ExtFinder on Finder {
     required List<Offset> firstFingerOffsets,
     required List<Offset> secondFingerOffsets,
     bool? logMove,
-  }) => TFinderCommand.auto(this).multiDrag(
-    firstDownOffset: firstDownOffset,
-    secondDownOffset: secondDownOffset,
-    firstFingerOffsets: firstFingerOffsets,
-    secondFingerOffsets: secondFingerOffsets,
-    logMove: logMove,
-  );
+  }) =>
+      TFinderCommand.auto(this).multiDrag(
+        firstDownOffset: firstDownOffset,
+        secondDownOffset: secondDownOffset,
+        firstFingerOffsets: firstFingerOffsets,
+        secondFingerOffsets: secondFingerOffsets,
+        logMove: logMove,
+      );
 }
 
 typedef ConvenientTestGetFinder = Finder Function(Object arg);
@@ -159,12 +160,12 @@ class TFinderCommand extends TCommand {
   Future<Object?> getCurrentActual() async => finder;
 
   Future<void> replaceText(String text, {bool? settle}) => act(
-    act: (log) => t.tester.enterText(finder, text),
-    preCondition: null,
-    logTitle: 'REPLACE TYPE',
-    logMessage: '"$text" to ${finder.describeMatch(Plurality.one)}',
-    settle: settle,
-  );
+        act: (log) => t.tester.enterText(finder, text),
+        preCondition: null,
+        logTitle: 'REPLACE TYPE',
+        logMessage: '"$text" to ${finder.describeMatch(Plurality.one)}',
+        settle: settle,
+      );
 
   Future<void> enterTextWithoutReplace(String text, {bool? settle}) {
     const logTitle = 'TYPE';
@@ -189,33 +190,34 @@ class TFinderCommand extends TCommand {
   }
 
   Future<void> tap({bool warnIfMissed = true, bool? settle}) => act(
-    act: (log) => t.tester.tap(finder, warnIfMissed: warnIfMissed),
-    preCondition: warnIfMissed ? ElementHitTestableMatcher(t.tester) : null,
-    logTitle: 'TAP',
-    logMessage: finder.describeMatch(Plurality.one),
-    settle: settle,
-  );
+        act: (log) => t.tester.tap(finder, warnIfMissed: warnIfMissed),
+        preCondition: warnIfMissed ? ElementHitTestableMatcher(t.tester) : null,
+        logTitle: 'TAP',
+        logMessage: finder.describeMatch(Plurality.one),
+        settle: settle,
+      );
 
   Future<void> tapAtAlignment(
     Alignment alignment, {
     bool warnIfMissed = true,
     bool? settle,
-  }) => act(
-    act: (log) =>
-        t.tester.tapAt(alignment.withinRect(t.tester.getRect(finder))),
-    preCondition: warnIfMissed ? ElementHitTestableMatcher(t.tester) : null,
-    logTitle: 'TAP',
-    logMessage: finder.describeMatch(Plurality.one),
-    settle: settle,
-  );
+  }) =>
+      act(
+        act: (log) =>
+            t.tester.tapAt(alignment.withinRect(t.tester.getRect(finder))),
+        preCondition: warnIfMissed ? ElementHitTestableMatcher(t.tester) : null,
+        logTitle: 'TAP',
+        logMessage: finder.describeMatch(Plurality.one),
+        settle: settle,
+      );
 
   Future<void> longPress({bool warnIfMissed = true, bool? settle}) => act(
-    act: (log) => t.tester.longPress(finder, warnIfMissed: warnIfMissed),
-    preCondition: warnIfMissed ? ElementHitTestableMatcher(t.tester) : null,
-    logTitle: 'LONG PRESS',
-    logMessage: finder.describeMatch(Plurality.one),
-    settle: settle,
-  );
+        act: (log) => t.tester.longPress(finder, warnIfMissed: warnIfMissed),
+        preCondition: warnIfMissed ? ElementHitTestableMatcher(t.tester) : null,
+        logTitle: 'LONG PRESS',
+        logMessage: finder.describeMatch(Plurality.one),
+        settle: settle,
+      );
 
   Future<void> drag(Offset offset, {bool warnIfMissed = true, bool? settle}) =>
       act(
@@ -233,22 +235,22 @@ class TFinderCommand extends TCommand {
     required List<Offset> secondFingerOffsets,
     bool? logMove,
     bool? settle,
-  }) => act(
-    act: (log) => t.tester.multiDrag(
-      finder,
-      firstDownOffset: firstDownOffset,
-      secondDownOffset: secondDownOffset,
-      firstFingerOffsets: firstFingerOffsets,
-      secondFingerOffsets: secondFingerOffsets,
-      afterMove: (logMove ?? false)
-          ? (i) => log.snapshot(name: 'move #$i')
-          : null,
-    ),
-    preCondition: null,
-    logTitle: 'MULTI DRAG',
-    logMessage: finder.describeMatch(Plurality.one),
-    settle: settle,
-  );
+  }) =>
+      act(
+        act: (log) => t.tester.multiDrag(
+          finder,
+          firstDownOffset: firstDownOffset,
+          secondDownOffset: secondDownOffset,
+          firstFingerOffsets: firstFingerOffsets,
+          secondFingerOffsets: secondFingerOffsets,
+          afterMove:
+              (logMove ?? false) ? (i) => log.snapshot(name: 'move #$i') : null,
+        ),
+        preCondition: null,
+        logTitle: 'MULTI DRAG',
+        logMessage: finder.describeMatch(Plurality.one),
+        settle: settle,
+      );
 
   Future<void> act({
     required Future<void> Function(LogHandle log) act,
@@ -266,22 +268,22 @@ class TFinderCommand extends TCommand {
     // ref https://docs.cypress.io/guides/core-concepts/retry-ability#Built-in-assertions
     await shouldRaw(
       allOf(findsOneWidget, preCondition),
-      logUpdate:
-          (
-            title,
-            message, {
-            error,
-            stackTrace,
-            required type,
-            printing = false,
-          }) => log.update(
-            '$logTitle ASSERT',
-            message,
-            type: type,
-            error: error,
-            stackTrace: stackTrace,
-            printing: printing,
-          ),
+      logUpdate: (
+        title,
+        message, {
+        error,
+        stackTrace,
+        required type,
+        printing = false,
+      }) =>
+          log.update(
+        '$logTitle ASSERT',
+        message,
+        type: type,
+        error: error,
+        stackTrace: stackTrace,
+        printing: printing,
+      ),
       logSnapshot: log.snapshot,
       // do not take snapshot if success - since we will do it later
       snapshotWhenSuccess: false,

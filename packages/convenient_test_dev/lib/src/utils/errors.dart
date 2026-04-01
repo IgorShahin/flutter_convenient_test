@@ -38,10 +38,10 @@ String _dumpErrorToString(FlutterErrorDetails details) {
   // NOTE According to comments of [dumpErrorToConsole], can *only* used in `dev` mode, not `profile/release` mode.
   //      Thus, if want it in profile/release, need to copy other code in [dumpErrorToConsole]. (Not copied yet)
   return TextTreeRenderer(
-        wrapWidth: FlutterError.wrapWidth,
-        wrapWidthProperties: FlutterError.wrapWidth,
-        maxDescendentsTruncatableNode: 5,
-      )
+    wrapWidth: FlutterError.wrapWidth,
+    wrapWidthProperties: FlutterError.wrapWidth,
+    maxDescendentsTruncatableNode: 5,
+  )
       .render(details.toDiagnosticsNode(style: DiagnosticsTreeStyle.error))
       .trimRight();
 }

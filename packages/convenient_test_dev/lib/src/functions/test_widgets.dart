@@ -52,8 +52,8 @@ void tTestWidgets(
 
       await tester.runAsync(() async {
         await myGetIt.get<ConvenientTestSlot>().appMain(
-          AppMainExecuteMode.integrationTest,
-        );
+              AppMainExecuteMode.integrationTest,
+            );
       });
       settle
           ? await t.tester.pumpAndSettleWithRunAsync()

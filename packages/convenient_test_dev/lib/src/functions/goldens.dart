@@ -44,15 +44,16 @@ class EnhancedLocalFileComparator extends LocalFileComparator {
   // ref https://github.com/flutter/flutter/pull/77014#issuecomment-1048896776
   factory EnhancedLocalFileComparator.configFromCurrent({
     bool captureFailure = false,
-  }) => EnhancedLocalFileComparator(
-    Uri.file(
-      path.join(
-        path.fromUri((goldenFileComparator as LocalFileComparator).basedir),
-        'something.dart',
-      ),
-    ),
-    captureFailure: captureFailure,
-  );
+  }) =>
+      EnhancedLocalFileComparator(
+        Uri.file(
+          path.join(
+            path.fromUri((goldenFileComparator as LocalFileComparator).basedir),
+            'something.dart',
+          ),
+        ),
+        captureFailure: captureFailure,
+      );
 
   String get basedirPath => path.fromUri(basedir);
 
@@ -77,7 +78,7 @@ class EnhancedLocalFileComparator extends LocalFileComparator {
       final String error =
           // ignore: prefer_interpolation_to_compose_strings
           await generateFailureOutput(result, golden, basedir) +
-          '\npixelDiffHistogram=${result.pixelDiffHistogram}';
+              '\npixelDiffHistogram=${result.pixelDiffHistogram}';
       throw FlutterError(error);
     }
     if (!result.passed) {
@@ -158,7 +159,8 @@ class EnhancedLocalFileComparator extends LocalFileComparator {
   static Future<MyComparisonResult> myCompareLists(
     List<int> test,
     List<int> master,
-  ) => _compareListsAllowSizeDiffer(test, master);
+  ) =>
+      _compareListsAllowSizeDiffer(test, master);
 }
 
 Uint8List _cropImage(Uint8List raw, Rectangle<int>? bbox) {
@@ -284,8 +286,7 @@ Future<MyComparisonResult> compareUiImages(
       passed: false,
       diffPercent: 1.0,
       pixelDiffHistogram: null, // NOTE MODIFIED ADD
-      error:
-          'Pixel test failed, image sizes do not match.\n'
+      error: 'Pixel test failed, image sizes do not match.\n'
           'Master Image: ${masterImage.width} X ${masterImage.height}\n'
           'Test Image: ${testImage.width} X ${testImage.height}',
     );
@@ -299,14 +300,14 @@ Future<MyComparisonResult> compareUiImages(
   final ByteData invertedMasterRgba = _invert(masterImageRgba!);
   final ByteData invertedTestRgba = _invert(testImageRgba!);
 
-  final Uint8List testImageBytes = (await testImage.toByteData())!.buffer
-      .asUint8List();
+  final Uint8List testImageBytes =
+      (await testImage.toByteData())!.buffer.asUint8List();
   final ByteData maskedDiffRgba = ByteData(testImageBytes.length);
   maskedDiffRgba.buffer.asUint8List().setRange(
-    0,
-    testImageBytes.length,
-    testImageBytes,
-  );
+        0,
+        testImageBytes.length,
+        testImageBytes,
+      );
   final ByteData isolatedDiffRgba = ByteData(width * height * 4);
 
   for (int x = 0; x < width; x++) {
@@ -317,9 +318,9 @@ Future<MyComparisonResult> compareUiImages(
 
       final int diffPixel =
           (_readRed(testPixel) - _readRed(masterPixel)).abs() +
-          (_readGreen(testPixel) - _readGreen(masterPixel)).abs() +
-          (_readBlue(testPixel) - _readBlue(masterPixel)).abs() +
-          (_readAlpha(testPixel) - _readAlpha(masterPixel)).abs();
+              (_readGreen(testPixel) - _readGreen(masterPixel)).abs() +
+              (_readBlue(testPixel) - _readBlue(masterPixel)).abs() +
+              (_readAlpha(testPixel) - _readAlpha(masterPixel)).abs();
 
       if (diffPixel != 0) {
         final int invertedMasterPixel = invertedMasterRgba.getUint32(
@@ -346,8 +347,7 @@ Future<MyComparisonResult> compareUiImages(
       passed: false,
       diffPercent: diffPercent,
       pixelDiffHistogram: pixelDiffHistogram,
-      error:
-          'Pixel test failed, '
+      error: 'Pixel test failed, '
           '${(diffPercent * 100).toStringAsFixed(2)}% '
           'diff detected.',
       diffs: <String, Image>{
@@ -474,19 +474,19 @@ class _RectangleIntJsonConverter
 
   @override
   Rectangle<int> fromJson(Map<String, Object?> json) => Rectangle(
-    json['left']! as int,
-    json['top']! as int,
-    json['width']! as int,
-    json['height']! as int,
-  );
+        json['left']! as int,
+        json['top']! as int,
+        json['width']! as int,
+        json['height']! as int,
+      );
 
   @override
   Map<String, Object?> toJson(Rectangle<int> object) => {
-    'left': object.left,
-    'top': object.top,
-    'width': object.width,
-    'height': object.height,
-  };
+        'left': object.left,
+        'top': object.top,
+        'width': object.width,
+        'height': object.height,
+      };
 }
 
 @JsonSerializable()
@@ -602,9 +602,8 @@ extension on GoldenConfig? {
   Uri toUri(String path) {
     final that = this;
     return Uri.file(path).replace(
-      queryParameters: that == null
-          ? null
-          : <String, Object?>{'config': jsonEncode(that)},
+      queryParameters:
+          that == null ? null : <String, Object?>{'config': jsonEncode(that)},
     );
   }
 }

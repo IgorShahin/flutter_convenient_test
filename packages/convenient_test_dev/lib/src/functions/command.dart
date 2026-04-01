@@ -45,17 +45,18 @@ extension ExtTCommand on TCommand {
     required LogSnapshot logSnapshot,
     required bool snapshotWhenSuccess,
     bool? settle,
-  }) => _expectWithRetry(
-    t,
-    getCurrentActual,
-    matcher,
-    overrideActualDescription: overrideActualDescription,
-    reason: reason,
-    logUpdate: logUpdate,
-    logSnapshot: logSnapshot,
-    snapshotWhenSuccess: snapshotWhenSuccess,
-    settle: settle,
-  );
+  }) =>
+      _expectWithRetry(
+        t,
+        getCurrentActual,
+        matcher,
+        overrideActualDescription: overrideActualDescription,
+        reason: reason,
+        logUpdate: logUpdate,
+        logSnapshot: logSnapshot,
+        snapshotWhenSuccess: snapshotWhenSuccess,
+        settle: settle,
+      );
 
   // syntax sugar
   Future<void> shouldEquals(dynamic expected, {String? reason}) =>
@@ -165,17 +166,15 @@ String _getTestFailureErrorExtraInfo(dynamic actual) {
         )
         .join('\n\n');
 
-    final ancestorInfos = elements
-        .mapIndexed((index, element) {
-          final reversedAncestors = [element];
-          element.visitAncestorElements((ancestorElement) {
-            reversedAncestors.add(ancestorElement);
-            return true;
-          });
-          return '🌳 Ancestors of element #$index:\n'
-              '${reversedAncestors.reversed.map((e) => '-> $e').join('\n')}';
-        })
-        .join('\n\n');
+    final ancestorInfos = elements.mapIndexed((index, element) {
+      final reversedAncestors = [element];
+      element.visitAncestorElements((ancestorElement) {
+        reversedAncestors.add(ancestorElement);
+        return true;
+      });
+      return '🌳 Ancestors of element #$index:\n'
+          '${reversedAncestors.reversed.map((e) => '-> $e').join('\n')}';
+    }).join('\n\n');
 
     return 'Extra info for matched elements: \n$bboxInfos\n$ancestorInfos';
   }

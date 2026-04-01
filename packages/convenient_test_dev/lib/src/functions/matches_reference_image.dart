@@ -15,7 +15,8 @@ import 'package:matcher/src/expect/async_matcher.dart';
 AsyncMatcher matchesEnhancedReferenceImage(
   ui.Image image,
   GoldenConfig config,
-) => _MatchesEnhancedReferenceImage(image, config);
+) =>
+    _MatchesEnhancedReferenceImage(image, config);
 
 // NOTE MODIFIED from [_MatchesReferenceImage]
 class _MatchesEnhancedReferenceImage extends AsyncMatcher {
