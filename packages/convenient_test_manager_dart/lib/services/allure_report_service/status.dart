@@ -8,6 +8,15 @@ String _formatStepName(LogSubEntry sub) {
   return '$title $message';
 }
 
+bool _isHiddenLifecycleStep(LogSubEntry sub) {
+  final name = _formatStepName(sub).trim().toUpperCase();
+  if (sub.type == LogSubEntryType.TEST_START ||
+      sub.type == LogSubEntryType.TEST_END) {
+    return true;
+  }
+  return name == 'START' || name == 'END';
+}
+
 String _statusForLogSubEntry(LogSubEntry sub) {
   if (sub.type == LogSubEntryType.ASSERT_FAIL) {
     return 'failed';

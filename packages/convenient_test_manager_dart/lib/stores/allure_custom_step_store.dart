@@ -13,11 +13,23 @@ class AllureCustomStepStore {
     testIdOfStep.clear();
   }
 
-  bool hasStepsForTest(int testEntryId) =>
-      rootStepIdsByTest[testEntryId]?.isNotEmpty ?? false;
+  bool hasStepsForTest(
+    int testEntryId, {
+    AllureCustomStepSection? section,
+  }) =>
+      rootStepIdsForTest(testEntryId, section: section).isNotEmpty;
 
-  List<String> rootStepIdsForTest(int testEntryId) =>
-      List<String>.from(rootStepIdsByTest[testEntryId] ?? const <String>[]);
+  List<String> rootStepIdsForTest(
+    int testEntryId, {
+    AllureCustomStepSection? section,
+  }) {
+    final ids =
+        List<String>.from(rootStepIdsByTest[testEntryId] ?? const <String>[]);
+    if (section == null) return ids;
+    return ids
+        .where((id) => stepMap[id]?.section == section)
+        .toList(growable: false);
+  }
 
   AllureCustomStepNode? stepById(String id) => stepMap[id];
 
@@ -25,16 +37,20 @@ class AllureCustomStepStore {
     required int testEntryId,
     required String id,
     required String name,
+    required AllureCustomStepSection section,
   }) {
     final openIds =
         openStepIdsByTest.putIfAbsent(testEntryId, ObservableList<String>.new);
     final rootIds =
         rootStepIdsByTest.putIfAbsent(testEntryId, ObservableList<String>.new);
     final parentId = openIds.isEmpty ? null : openIds.last;
+    final effectiveSection =
+        parentId == null ? section : (stepMap[parentId]?.section ?? section);
     stepMap[id] = AllureCustomStepNode(
       id: id,
       name: name,
       parentId: parentId,
+      section: effectiveSection,
     );
     testIdOfStep[id] = testEntryId;
     if (parentId == null) {
@@ -124,10 +140,12 @@ class AllureCustomStepNode {
   final int parameterCount;
   final int attachmentCount;
   final bool finished;
+  final AllureCustomStepSection section;
 
   const AllureCustomStepNode({
     required this.id,
     required this.name,
+    required this.section,
     this.status = 'pending',
     this.parentId,
     this.childIds = const <String>[],
@@ -146,10 +164,12 @@ class AllureCustomStepNode {
     int? parameterCount,
     int? attachmentCount,
     bool? finished,
+    AllureCustomStepSection? section,
   }) {
     return AllureCustomStepNode(
       id: id,
       name: name ?? this.name,
+      section: section ?? this.section,
       status: status ?? this.status,
       parentId: parentId ?? this.parentId,
       childIds: childIds ?? this.childIds,
@@ -158,4 +178,10 @@ class AllureCustomStepNode {
       finished: finished ?? this.finished,
     );
   }
+}
+
+enum AllureCustomStepSection {
+  setup,
+  body,
+  teardown,
 }

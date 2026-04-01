@@ -135,6 +135,11 @@ class _AllureEventProcessor {
         continue;
       }
 
+      if (_isHiddenLifecycleStep(sub)) {
+        runtime.logBuffer.writeln(o._formatRawLogLine(sub, subMs));
+        continue;
+      }
+
       if (_shouldSkipErrorLikeSubEntry(runtime, sub)) {
         runtime.logBuffer.writeln(o._formatRawLogLine(sub, subMs));
         continue;

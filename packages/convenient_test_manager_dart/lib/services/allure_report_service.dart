@@ -464,7 +464,14 @@ class ManagerAllureReportService {
       'start': atMs,
       'stop': atMs,
     };
-    _appendAllureCustomStep(runtime: runtime, id: id, step: step);
+    _appendAllureCustomStep(
+      runtime: runtime,
+      id: id,
+      step: step,
+      rootRouting: runtime.hasSeenBodyStart
+          ? const _AllureHookRouting.body()
+          : const _AllureHookRouting.before('SETUP'),
+    );
   }
 
   void _handleAllureCustomStepEnd({
@@ -560,9 +567,23 @@ class ManagerAllureReportService {
     required _AllureTestRuntime runtime,
     required String id,
     required Map<String, dynamic> step,
+    required _AllureHookRouting rootRouting,
   }) {
     if (runtime.openAllureStepIds.isEmpty) {
-      runtime.steps.add(step);
+      switch (rootRouting.section) {
+        case _AllureHookSection.before:
+          final fixtureName = rootRouting.fixtureName ?? 'SETUP';
+          final fixture = runtime.ensureBeforeFixture(fixtureName);
+          fixture.steps.add(step);
+          fixture.absorbStep(step);
+        case _AllureHookSection.after:
+          final fixtureName = rootRouting.fixtureName ?? 'TEARDOWN';
+          final fixture = runtime.ensureAfterFixture(fixtureName);
+          fixture.steps.add(step);
+          fixture.absorbStep(step);
+        case _AllureHookSection.body:
+          runtime.steps.add(step);
+      }
     } else {
       final parentId = runtime.openAllureStepIds.last;
       final parent = runtime.allureStepsById[parentId];

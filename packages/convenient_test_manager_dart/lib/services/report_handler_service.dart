@@ -32,6 +32,7 @@ class ReportHandlerService {
       '__CT_ALLURE_STEP_TEXT_ATTACHMENT__:';
   static const _kAllureStepJsonAttachmentPrefix =
       '__CT_ALLURE_STEP_JSON_ATTACHMENT__:';
+  final _hasSeenBodyStartByTestEntryId = <int, bool>{};
 
   /// handle a report sent by the worker.
   /// doClear: if handleSuiteInfoProto should clear the already known suite info.
@@ -123,6 +124,17 @@ class ReportHandlerService {
       return;
     }
 
+    if (visibleSubEntries.any(
+      (sub) => sub.type == LogSubEntryType.TEST_END,
+    )) {
+      _hasSeenBodyStartByTestEntryId[testEntryId] = false;
+    }
+    if (visibleSubEntries.any(
+      (sub) => sub.type == LogSubEntryType.TEST_START,
+    )) {
+      _hasSeenBodyStartByTestEntryId[testEntryId] = true;
+    }
+
     _logStore.addLogEntry(
         testEntryId: testEntryId,
         logEntryId: requestId,
@@ -161,6 +173,9 @@ class ReportHandlerService {
             testEntryId: testEntryId,
             id: id,
             name: name,
+            section: (_hasSeenBodyStartByTestEntryId[testEntryId] ?? false)
+                ? AllureCustomStepSection.body
+                : AllureCustomStepSection.setup,
           );
         }
         return;
@@ -256,6 +271,9 @@ class ReportHandlerService {
     if (testEntryId == null) return;
 
     _suiteInfoStore.testEntryStateMap[testEntryId] = request.state;
+    if (request.state.status == 'complete') {
+      _hasSeenBodyStartByTestEntryId[testEntryId] = false;
+    }
   }
 
   Future<void> _handleSnapshot(
@@ -289,6 +307,7 @@ class ReportHandlerService {
     if (shouldReset) {
       Log.d(_kTag, 'handleReportSuiteInfo thus MiscDartService.clearAll');
       GetIt.I.get<MiscDartService>().clearAll();
+      _hasSeenBodyStartByTestEntryId.clear();
 
       // in case data from previous super-run are logged into current run
       if (doClear) {
