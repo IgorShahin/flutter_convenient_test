@@ -216,7 +216,11 @@ class ReportHandlerService {
       if (stepTextAttachment != null) {
         final id = stepTextAttachment['id']?.toString().trim() ?? '';
         if (id.isNotEmpty) {
-          customStepStore.addAttachment(id: id);
+          customStepStore.addAttachment(
+            id: id,
+            name: stepTextAttachment['name']?.toString(),
+            content: stepTextAttachment['content']?.toString(),
+          );
         }
         return;
       }
@@ -227,7 +231,11 @@ class ReportHandlerService {
       if (stepJsonAttachment != null) {
         final id = stepJsonAttachment['id']?.toString().trim() ?? '';
         if (id.isNotEmpty) {
-          customStepStore.addAttachment(id: id);
+          customStepStore.addAttachment(
+            id: id,
+            name: stepJsonAttachment['name']?.toString(),
+            content: stepJsonAttachment['content']?.toString(),
+          );
         }
         return;
       }

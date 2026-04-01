@@ -147,6 +147,27 @@ String _exceptionLikeTrace(LogSubEntry sub) {
   return '';
 }
 
+bool _shouldInlineExceptionDetails({
+  required String message,
+  required String trace,
+}) {
+  final cleanMessage = message.trim();
+  final cleanTrace = trace.trim();
+  if (cleanMessage.isEmpty && cleanTrace.isEmpty) {
+    return false;
+  }
+  if (cleanTrace.isNotEmpty) {
+    return false;
+  }
+
+  final lineCount = '\n'.allMatches(cleanMessage).length + 1;
+  if (lineCount > 3) {
+    return false;
+  }
+
+  return cleanMessage.length <= 240;
+}
+
 String _allureStatusFromResult(String result) {
   switch (result) {
     case 'success':

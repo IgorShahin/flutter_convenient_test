@@ -105,10 +105,22 @@ class AllureCustomStepStore {
 
   void addAttachment({
     required String id,
+    String? name,
+    String? content,
   }) {
     final node = stepMap[id];
     if (node == null) return;
-    stepMap[id] = node.copyWith(attachmentCount: node.attachmentCount + 1);
+    final normalizedName = name?.trim().toLowerCase() ?? '';
+    final nextErrorText =
+        normalizedName == 'exception' && (content?.trim().isNotEmpty ?? false)
+            ? ((node.errorText?.trim().isNotEmpty ?? false)
+                ? '${node.errorText!.trim()}\n\n${content!.trim()}'
+                : content!.trim())
+            : node.errorText;
+    stepMap[id] = node.copyWith(
+      attachmentCount: node.attachmentCount + 1,
+      errorText: nextErrorText,
+    );
   }
 
   void _bubbleStatus(String stepId, String status) {
@@ -150,6 +162,7 @@ class AllureCustomStepNode {
   final bool finished;
   final AllureCustomStepSection section;
   final List<AllureCustomStepParameter> parameters;
+  final String? errorText;
 
   const AllureCustomStepNode({
     required this.id,
@@ -162,6 +175,7 @@ class AllureCustomStepNode {
     this.attachmentCount = 0,
     this.finished = false,
     this.parameters = const <AllureCustomStepParameter>[],
+    this.errorText,
   });
 
   bool get hasChildren => childIds.isNotEmpty;
@@ -176,6 +190,7 @@ class AllureCustomStepNode {
     bool? finished,
     AllureCustomStepSection? section,
     List<AllureCustomStepParameter>? parameters,
+    String? errorText,
   }) {
     return AllureCustomStepNode(
       id: id,
@@ -188,6 +203,7 @@ class AllureCustomStepNode {
       attachmentCount: attachmentCount ?? this.attachmentCount,
       finished: finished ?? this.finished,
       parameters: parameters ?? this.parameters,
+      errorText: errorText ?? this.errorText,
     );
   }
 }

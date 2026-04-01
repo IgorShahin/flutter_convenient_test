@@ -379,7 +379,11 @@ class ManagerAllureReportService {
         if (message.trim().isNotEmpty) message.trim(),
         if (trace.trim().isNotEmpty) trace.trim(),
       ].join('\n\n');
-      if (details.trim().isNotEmpty) {
+      if (_shouldInlineExceptionDetails(message: message, trace: trace)) {
+        step['statusDetails'] = {
+          'message': message.trim(),
+        };
+      } else if (details.trim().isNotEmpty) {
         step['attachments'] = [
           _writeTextAttachment(
             name: 'exception',
@@ -807,9 +811,11 @@ class ManagerAllureReportService {
     required int atMs,
     required String status,
   }) {
+    final cleanError = error.trim();
+    final cleanTrace = stackTrace.trim();
     final details = <String>[
-      if (error.trim().isNotEmpty) error.trim(),
-      if (stackTrace.trim().isNotEmpty) stackTrace.trim(),
+      if (cleanError.isNotEmpty) cleanError,
+      if (cleanTrace.isNotEmpty) cleanTrace,
     ].join('\n\n');
 
     final step = <String, dynamic>{
@@ -820,7 +826,11 @@ class ManagerAllureReportService {
       'stop': atMs,
     };
 
-    if (details.trim().isNotEmpty) {
+    if (_shouldInlineExceptionDetails(message: cleanError, trace: cleanTrace)) {
+      step['statusDetails'] = {
+        'message': cleanError,
+      };
+    } else if (details.trim().isNotEmpty) {
       step['attachments'] = [
         _writeTextAttachment(
           name: 'exception',
