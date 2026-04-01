@@ -709,12 +709,28 @@ class ManagerAllureReportService {
   }) {
     final setupFixture = runtime.beforeFixtures['SETUP'];
     if (setupFixture == null) return;
-    if (setupFixture.steps.length <= 1) return;
+
+    final visibleSteps = setupFixture.steps.where((step) {
+      final stepNameRaw = (step['name'] as String?)?.trim() ?? '';
+      return !_isSetupSeparatorStep(stepNameRaw);
+    }).toList();
+
+    if (visibleSteps.isEmpty) {
+      setupFixture.steps.clear();
+      return;
+    }
+
+    if (visibleSteps.length == 1) {
+      setupFixture.steps
+        ..clear()
+        ..addAll(visibleSteps);
+      return;
+    }
 
     final compactedGroupNames = _compactGroupHierarchyNames(suiteGroupNames);
     final blocks = <List<Map<String, dynamic>>>[];
     var currentBlock = <Map<String, dynamic>>[];
-    for (final step in setupFixture.steps) {
+    for (final step in visibleSteps) {
       final stepNameRaw = (step['name'] as String?)?.trim() ?? '';
       if (_isSetupSeparatorStep(stepNameRaw) && currentBlock.isNotEmpty) {
         blocks.add(currentBlock);
@@ -722,7 +738,6 @@ class ManagerAllureReportService {
         continue;
       }
       if (_isSetupSeparatorStep(stepNameRaw)) {
-        // Skip synthetic setup separator markers in rendered output.
         continue;
       }
       currentBlock.add(step);
@@ -730,7 +745,12 @@ class ManagerAllureReportService {
     if (currentBlock.isNotEmpty) {
       blocks.add(currentBlock);
     }
-    if (blocks.length <= 1) return;
+    if (blocks.length <= 1) {
+      setupFixture.steps
+        ..clear()
+        ..addAll(visibleSteps);
+      return;
+    }
 
     final wrappers = <Map<String, dynamic>>[];
     final offset = max(0, compactedGroupNames.length - blocks.length);
@@ -1733,9 +1753,14 @@ class ManagerAllureReportService {
 
   Future<void> _writeContainer(_AllureTestRuntime runtime) async {
     if (_resultsDirPath == null) return;
-    final befores =
-        runtime.beforeFixtures.values.map((e) => e.toJson()).toList();
-    final afters = runtime.afterFixtures.values.map((e) => e.toJson()).toList();
+    final befores = runtime.beforeFixtures.values
+        .where((e) => e.hasRenderableContent)
+        .map((e) => e.toJson())
+        .toList();
+    final afters = runtime.afterFixtures.values
+        .where((e) => e.hasRenderableContent)
+        .map((e) => e.toJson())
+        .toList();
     if (befores.isEmpty && afters.isEmpty) return;
 
     final containerUuid = _nextUuid();
@@ -1926,6 +1951,9 @@ class _AllureFixtureRuntime {
   int? _stopMs;
 
   _AllureFixtureRuntime({required this.name});
+
+  bool get hasRenderableContent =>
+      _buildDisplaySteps().isNotEmpty || attachments.isNotEmpty;
 
   void absorbStep(Map<String, dynamic> step) {
     final stepStatus = (step['status'] as String?) ?? 'passed';
