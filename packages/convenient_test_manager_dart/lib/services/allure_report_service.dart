@@ -307,6 +307,18 @@ class ManagerAllureReportService {
         continue;
       }
 
+      final errorSignature = _isExceptionLikeLogSubEntry(sub)
+          ? _errorSignature(
+              message: _exceptionLikeMessage(sub),
+              trace: _exceptionLikeTrace(sub),
+            )
+          : null;
+      if (errorSignature != null &&
+          runtime.errorSignatures.contains(errorSignature)) {
+        runtime.logBuffer.writeln(_formatRawLogLine(sub, subMs));
+        continue;
+      }
+
       final step = _buildStep(sub, subMs);
       final routing = _hookRoutingFromLogSubEntry(
         runtime: runtime,
@@ -319,6 +331,9 @@ class ManagerAllureReportService {
       );
       _lastStepPointerByLogEntryId[logEntryId] = pointer;
       _lastOpenStepPointerByRuntimeUuid[runtime.uuid] = pointer;
+      if (errorSignature != null) {
+        runtime.errorSignatures.add(errorSignature);
+      }
       runtime.logBuffer.writeln(_formatRawLogLine(sub, subMs));
       if (_isHttpCheckMarker(sub)) {
         runtime.pendingHttpCheckPointer = pointer;
@@ -343,7 +358,10 @@ class ManagerAllureReportService {
 
     final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
     runtime.touchAt(nowMs);
-    runtime.status = _allureStatusFromResult(request.state.result);
+    runtime.status = _mergeRuntimeStatus(
+      current: runtime.status,
+      incoming: _allureStatusFromResult(request.state.result),
+    );
 
     if (request.state.status == 'complete') {
       await _finalize(runtime);
@@ -390,6 +408,22 @@ class ManagerAllureReportService {
       return;
     }
 
+    final errorSignature = _errorSignature(
+      message: request.error,
+      trace: request.stackTrace,
+    );
+    if (errorSignature != null &&
+        runtime.errorSignatures.contains(errorSignature)) {
+      runtime.logBuffer.writeln('RUNNER ERROR: ${request.error}');
+      if (request.stackTrace.isNotEmpty) {
+        runtime.logBuffer.writeln(request.stackTrace);
+      }
+      if (wasFinished) {
+        _rewriteFinalizedRuntime(runtime);
+      }
+      return;
+    }
+
     runtime.statusDetails = {
       'message': request.error,
       'trace': request.stackTrace,
@@ -410,6 +444,9 @@ class ManagerAllureReportService {
         status: runnerErrorStatus,
       ),
     );
+    if (errorSignature != null) {
+      runtime.errorSignatures.add(errorSignature);
+    }
     runtime.logBuffer.writeln('RUNNER ERROR: ${request.error}');
     if (request.stackTrace.isNotEmpty) {
       runtime.logBuffer.writeln(request.stackTrace);
@@ -609,7 +646,7 @@ class ManagerAllureReportService {
       'historyId': runtime.historyId,
       'name': displayName,
       'fullName': displayName,
-      'status': runtime.status ?? 'unknown',
+      'status': _effectiveRuntimeStatus(runtime),
       'stage': 'finished',
       'start': runtime.startMs,
       'stop': runtime.stopMs,
@@ -623,7 +660,7 @@ class ManagerAllureReportService {
         },
       ],
     };
-    if (runtime.statusDetails != null) {
+    if (_shouldIncludeRuntimeStatusDetails(runtime)) {
       result['statusDetails'] = runtime.statusDetails;
     }
 
@@ -1141,10 +1178,6 @@ class ManagerAllureReportService {
     if (_isExceptionLikeLogSubEntry(sub)) {
       final message = _exceptionLikeMessage(sub);
       final trace = _exceptionLikeTrace(sub);
-      step['statusDetails'] = {
-        'message': message,
-        'trace': trace,
-      };
       final details = <String>[
         if (message.trim().isNotEmpty) message.trim(),
         if (trace.trim().isNotEmpty) trace.trim(),
@@ -1395,10 +1428,6 @@ class ManagerAllureReportService {
       'stage': 'finished',
       'start': atMs,
       'stop': atMs,
-      'statusDetails': {
-        'message': error,
-        'trace': stackTrace,
-      },
     };
 
     if (details.trim().isNotEmpty) {
@@ -1810,6 +1839,74 @@ class ManagerAllureReportService {
     }
   }
 
+  String _effectiveRuntimeStatus(_AllureTestRuntime runtime) {
+    final current = runtime.status ?? 'unknown';
+    final worstStepStatus = _worstStepStatus(runtime);
+    if (worstStepStatus == null) {
+      return current;
+    }
+    if (current == 'unknown' || current == 'passed') {
+      return worstStepStatus;
+    }
+    if (current == 'broken' && worstStepStatus == 'failed') {
+      return 'failed';
+    }
+    if (current == 'failed' && worstStepStatus == 'broken') {
+      return 'broken';
+    }
+    return current;
+  }
+
+  bool _shouldIncludeRuntimeStatusDetails(_AllureTestRuntime runtime) {
+    return runtime.statusDetails != null && !_hasDetailedErrorStep(runtime);
+  }
+
+  String? _errorSignature({
+    required String message,
+    required String trace,
+  }) {
+    final normalizedMessage =
+        message.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+    final normalizedTrace =
+        trace.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+    if (normalizedMessage.isEmpty && normalizedTrace.isEmpty) {
+      return null;
+    }
+    return '$normalizedMessage\n$normalizedTrace';
+  }
+
+  String? _worstStepStatus(_AllureTestRuntime runtime) {
+    bool hasFailed = false;
+
+    bool collect(List<Map<String, dynamic>> steps) {
+      for (final step in steps) {
+        final status = ((step['status'] as String?) ?? '').trim().toLowerCase();
+        if (status == 'broken') {
+          return true;
+        }
+        if (status == 'failed') {
+          hasFailed = true;
+        }
+      }
+      return false;
+    }
+
+    if (collect(runtime.steps)) {
+      return 'broken';
+    }
+    for (final fixture in runtime.beforeFixtures.values) {
+      if (collect(fixture.steps)) {
+        return 'broken';
+      }
+    }
+    for (final fixture in runtime.afterFixtures.values) {
+      if (collect(fixture.steps)) {
+        return 'broken';
+      }
+    }
+    return hasFailed ? 'failed' : null;
+  }
+
   int _usToMs(int value) => value ~/ 1000;
 
   String _detectImageExtension(Uint8List bytes) {
@@ -2012,7 +2109,7 @@ class ManagerAllureReportService {
       'historyId': runtime.historyId,
       'name': displayName,
       'fullName': displayName,
-      'status': runtime.status ?? 'unknown',
+      'status': _effectiveRuntimeStatus(runtime),
       'stage': 'finished',
       'start': runtime.startMs,
       'stop': runtime.stopMs,
@@ -2026,7 +2123,7 @@ class ManagerAllureReportService {
         },
       ],
     };
-    if (runtime.statusDetails != null) {
+    if (_shouldIncludeRuntimeStatusDetails(runtime)) {
       result['statusDetails'] = runtime.statusDetails;
     }
 
@@ -2194,6 +2291,7 @@ class _AllureTestRuntime {
   final List<Map<String, dynamic>> steps = [];
   final List<Map<String, dynamic>> attachments = [];
   final Set<String> customTags = {};
+  final Set<String> errorSignatures = {};
   final Map<String, _AllureFixtureRuntime> beforeFixtures = {};
   final Map<String, _AllureFixtureRuntime> afterFixtures = {};
   final StringBuffer logBuffer = StringBuffer();
