@@ -1,6 +1,7 @@
 // ref: https://docs.cypress.io/api/cypress-api/cypress-log#Arguments
 
 // ignore_for_file: implementation_imports
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -53,6 +54,11 @@ LogHandle convenientTestLog(
 final _activeConvenientTestNames = <String>{};
 const _kTextAttachmentTitlePrefix = '__CT_TEXT_ATTACHMENT__:';
 const _kAllureTagsPrefix = '__CT_ALLURE_TAGS__:';
+const _kAllureStepStartPrefix = '__CT_ALLURE_STEP_START__:';
+const _kAllureStepEndPrefix = '__CT_ALLURE_STEP_END__:';
+const _kAllureStepParameterPrefix = '__CT_ALLURE_STEP_PARAMETER__:';
+const _kAllureStepTextAttachmentPrefix = '__CT_ALLURE_STEP_TEXT_ATTACHMENT__:';
+const _kAllureStepJsonAttachmentPrefix = '__CT_ALLURE_STEP_JSON_ATTACHMENT__:';
 
 void _updateActiveTestTracking(String testName, LogSubEntryType type) {
   switch (type) {
@@ -233,6 +239,155 @@ Future<void> convenientTestAddAllureTags(
       runnerMessage: RunnerMessage(
         testName: testName,
         message: '$_kAllureTagsPrefix${jsonEncode(normalized)}',
+      ),
+    ),
+  );
+}
+
+class AllureStepHandle {
+  final String _id;
+  final String _testName;
+
+  const AllureStepHandle._(this._id, this._testName);
+
+  Future<void> parameter(String name, Object? value) async {
+    await _reportRunnerMessage(
+      _testName,
+      '$_kAllureStepParameterPrefix${jsonEncode({
+            'id': _id,
+            'name': name,
+            'value': value?.toString() ?? '',
+          })}',
+    );
+  }
+
+  Future<void> attachText({
+    required String name,
+    required String content,
+  }) async {
+    await _reportRunnerMessage(
+      _testName,
+      '$_kAllureStepTextAttachmentPrefix${jsonEncode({
+            'id': _id,
+            'name': name,
+            'content': content,
+          })}',
+    );
+  }
+
+  Future<void> attachJson({
+    required String name,
+    required Object? value,
+  }) async {
+    await _reportRunnerMessage(
+      _testName,
+      '$_kAllureStepJsonAttachmentPrefix${jsonEncode({
+            'id': _id,
+            'name': name,
+            'content': const JsonEncoder.withIndent('  ').convert(value),
+          })}',
+    );
+  }
+
+  Future<T> step<T>(
+    String name,
+    FutureOr<T> Function(AllureStepHandle step) body,
+  ) {
+    return convenientTestAllureStep(
+      name,
+      body: body,
+      liveTest: _currentLiveTestByName(_testName),
+    );
+  }
+
+  Future<void> end({String status = 'passed'}) async {
+    await _reportRunnerMessage(
+      _testName,
+      '$_kAllureStepEndPrefix${jsonEncode({
+            'id': _id,
+            'status': status,
+          })}',
+    );
+  }
+}
+
+Future<AllureStepHandle> convenientTestOpenAllureStep(
+  String name, {
+  LiveTest? liveTest,
+}) async {
+  final testName = _liveTestName(liveTest);
+  final id = IdGenerator.instance.nextId().toString();
+  await _reportRunnerMessage(
+    testName,
+    '$_kAllureStepStartPrefix${jsonEncode({
+          'id': id,
+          'name': name,
+        })}',
+  );
+  return AllureStepHandle._(id, testName);
+}
+
+Future<T> convenientTestAllureStep<T>(
+  String name, {
+  required FutureOr<T> Function(AllureStepHandle step) body,
+  LiveTest? liveTest,
+}) async {
+  final step = await convenientTestOpenAllureStep(name, liveTest: liveTest);
+  try {
+    final result = await Future<T>.value(body(step));
+    await step.end(status: 'passed');
+    return result;
+  } catch (error, stackTrace) {
+    await step.attachText(
+      name: 'exception',
+      content: [
+        error.toString().trim(),
+        stackTrace.toString().trim(),
+      ].where((e) => e.isNotEmpty).join('\n\n'),
+    );
+    await step.end(status: _allureStatusForThrown(error, stackTrace));
+    rethrow;
+  }
+}
+
+String _allureStatusForThrown(Object error, StackTrace stackTrace) {
+  if (error is TestFailure) {
+    return 'failed';
+  }
+  final haystack = '$error\n$stackTrace'.toLowerCase();
+  if (haystack.contains('pixel test failed') ||
+      haystack.contains('golden ') ||
+      haystack.contains('test failed. see exception logs above.') ||
+      haystack.contains('expected:') ||
+      haystack.contains('matcher:') ||
+      haystack.contains('which:')) {
+    return 'failed';
+  }
+  return 'broken';
+}
+
+String _liveTestName(LiveTest? liveTest) =>
+    (liveTest ?? Invoker.current!.liveTest).test.name;
+
+LiveTest? _currentLiveTestByName(String testName) {
+  try {
+    final current = Invoker.current!.liveTest;
+    if (current.test.name == testName) {
+      return current;
+    }
+  } catch (_) {}
+  return null;
+}
+
+Future<void> _reportRunnerMessage(String testName, String message) async {
+  final reporterService = WorkerReportSaverService.I;
+  if (reporterService == null) return;
+
+  await reporterService.report(
+    ReportItem(
+      runnerMessage: RunnerMessage(
+        testName: testName,
+        message: message,
       ),
     ),
   );

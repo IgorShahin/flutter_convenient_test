@@ -10,6 +10,7 @@ import 'package:convenient_test_manager_dart/services/report_handler_service.dar
 import 'package:convenient_test_manager_dart/services/report_saver_service.dart';
 import 'package:convenient_test_manager_dart/services/screen_video_recorder_service.dart';
 import 'package:convenient_test_manager_dart/services/vm_service_wrapper_service.dart';
+import 'package:convenient_test_manager_dart/stores/allure_custom_step_store.dart';
 import 'package:convenient_test_manager_dart/stores/global_config_store.dart';
 import 'package:convenient_test_manager_dart/stores/highlight_store.dart';
 import 'package:convenient_test_manager_dart/stores/log_store.dart';
@@ -39,6 +40,7 @@ Future<void> setup({
       : GlobalConfigNullable().toConfig();
 
   getIt.registerSingleton<LogStore>(LogStore());
+  getIt.registerSingleton<AllureCustomStepStore>(AllureCustomStepStore());
   getIt.registerSingleton<SuiteInfoStore>(SuiteInfoStore());
   getIt.registerSingleton<RawLogStore>(RawLogStore());
   getIt.registerSingleton<WorkerSuperRunStore>(WorkerSuperRunStore());

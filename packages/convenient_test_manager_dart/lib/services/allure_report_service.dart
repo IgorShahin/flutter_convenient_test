@@ -17,6 +17,13 @@ class ManagerAllureReportService {
   static const _kVideoChunkSnapshotPrefix = '__ct_video_chunk__';
   static const _kTextAttachmentTitlePrefix = '__CT_TEXT_ATTACHMENT__:';
   static const _kAllureTagsPrefix = '__CT_ALLURE_TAGS__:';
+  static const _kAllureStepStartPrefix = '__CT_ALLURE_STEP_START__:';
+  static const _kAllureStepEndPrefix = '__CT_ALLURE_STEP_END__:';
+  static const _kAllureStepParameterPrefix = '__CT_ALLURE_STEP_PARAMETER__:';
+  static const _kAllureStepTextAttachmentPrefix =
+      '__CT_ALLURE_STEP_TEXT_ATTACHMENT__:';
+  static const _kAllureStepJsonAttachmentPrefix =
+      '__CT_ALLURE_STEP_JSON_ATTACHMENT__:';
 
   Future<void> save(ReportCollection request) async {
     if (!supportsIoPlatform) return;
@@ -470,6 +477,122 @@ class ManagerAllureReportService {
       }
       return;
     }
+    final stepStart = _parseRunnerMessageJsonMarker(
+      request.message,
+      _kAllureStepStartPrefix,
+    );
+    if (stepStart != null) {
+      if (_isSetUpAllServiceTestName(request.testName) ||
+          _isServiceTestName(request.testName)) {
+        return;
+      }
+      final runtime = _runtimeForIncomingEvent(request.testName);
+      final wasFinished = runtime.finished;
+      final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
+      runtime.touchAt(nowMs);
+      _handleAllureCustomStepStart(
+        runtime: runtime,
+        payload: stepStart,
+        atMs: nowMs,
+      );
+      if (wasFinished) {
+        _rewriteFinalizedRuntime(runtime);
+      }
+      return;
+    }
+    final stepEnd = _parseRunnerMessageJsonMarker(
+      request.message,
+      _kAllureStepEndPrefix,
+    );
+    if (stepEnd != null) {
+      if (_isSetUpAllServiceTestName(request.testName) ||
+          _isServiceTestName(request.testName)) {
+        return;
+      }
+      final runtime = _runtimeForIncomingEvent(request.testName);
+      final wasFinished = runtime.finished;
+      final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
+      runtime.touchAt(nowMs);
+      _handleAllureCustomStepEnd(
+        runtime: runtime,
+        payload: stepEnd,
+        atMs: nowMs,
+      );
+      if (wasFinished) {
+        _rewriteFinalizedRuntime(runtime);
+      }
+      return;
+    }
+    final stepParameter = _parseRunnerMessageJsonMarker(
+      request.message,
+      _kAllureStepParameterPrefix,
+    );
+    if (stepParameter != null) {
+      if (_isSetUpAllServiceTestName(request.testName) ||
+          _isServiceTestName(request.testName)) {
+        return;
+      }
+      final runtime = _runtimeForIncomingEvent(request.testName);
+      final wasFinished = runtime.finished;
+      final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
+      runtime.touchAt(nowMs);
+      _handleAllureCustomStepParameter(
+        runtime: runtime,
+        payload: stepParameter,
+      );
+      if (wasFinished) {
+        _rewriteFinalizedRuntime(runtime);
+      }
+      return;
+    }
+    final stepTextAttachment = _parseRunnerMessageJsonMarker(
+      request.message,
+      _kAllureStepTextAttachmentPrefix,
+    );
+    if (stepTextAttachment != null) {
+      if (_isSetUpAllServiceTestName(request.testName) ||
+          _isServiceTestName(request.testName)) {
+        return;
+      }
+      final runtime = _runtimeForIncomingEvent(request.testName);
+      final wasFinished = runtime.finished;
+      final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
+      runtime.touchAt(nowMs);
+      _handleAllureCustomStepAttachment(
+        runtime: runtime,
+        payload: stepTextAttachment,
+        type: 'text/plain',
+        extension: 'txt',
+      );
+      if (wasFinished) {
+        _rewriteFinalizedRuntime(runtime);
+      }
+      return;
+    }
+    final stepJsonAttachment = _parseRunnerMessageJsonMarker(
+      request.message,
+      _kAllureStepJsonAttachmentPrefix,
+    );
+    if (stepJsonAttachment != null) {
+      if (_isSetUpAllServiceTestName(request.testName) ||
+          _isServiceTestName(request.testName)) {
+        return;
+      }
+      final runtime = _runtimeForIncomingEvent(request.testName);
+      final wasFinished = runtime.finished;
+      final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
+      runtime.touchAt(nowMs);
+      _handleAllureCustomStepAttachment(
+        runtime: runtime,
+        payload: stepJsonAttachment,
+        type: 'application/json',
+        extension: 'json',
+      );
+      if (wasFinished) {
+        _rewriteFinalizedRuntime(runtime);
+      }
+      return;
+    }
     if (_isSetUpAllServiceTestName(request.testName)) {
       _deferredSetUpAllLogBuffer.writeln('RUNNER MESSAGE: ${request.message}');
       return;
@@ -603,6 +726,7 @@ class ManagerAllureReportService {
   Future<void> _finalize(_AllureTestRuntime runtime) async {
     if (_resultsDirPath == null || runtime.finished) return;
     runtime.finished = true;
+    _closeOpenAllureCustomSteps(runtime);
 
     final openPointer = _lastOpenStepPointerByRuntimeUuid.remove(runtime.uuid);
     if (openPointer != null) {
@@ -1233,6 +1357,178 @@ class ManagerAllureReportService {
     }
   }
 
+  Map<String, dynamic>? _parseRunnerMessageJsonMarker(
+    String message,
+    String prefix,
+  ) {
+    if (!message.startsWith(prefix)) return null;
+    final raw = message.substring(prefix.length).trim();
+    if (raw.isEmpty) return const <String, dynamic>{};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) {
+        return const <String, dynamic>{};
+      }
+      return decoded.cast<String, dynamic>();
+    } catch (_) {
+      return const <String, dynamic>{};
+    }
+  }
+
+  void _handleAllureCustomStepStart({
+    required _AllureTestRuntime runtime,
+    required Map<String, dynamic> payload,
+    required int atMs,
+  }) {
+    final id = payload['id']?.toString().trim() ?? '';
+    final name = payload['name']?.toString().trim() ?? '';
+    if (id.isEmpty || name.isEmpty) return;
+
+    final step = <String, dynamic>{
+      'name': name,
+      'status': 'passed',
+      'stage': 'finished',
+      'start': atMs,
+      'stop': atMs,
+    };
+    _appendAllureCustomStep(runtime: runtime, id: id, step: step);
+  }
+
+  void _handleAllureCustomStepEnd({
+    required _AllureTestRuntime runtime,
+    required Map<String, dynamic> payload,
+    required int atMs,
+  }) {
+    final id = payload['id']?.toString().trim() ?? '';
+    if (id.isEmpty) return;
+
+    final step = runtime.allureStepsById[id];
+    if (step == null) return;
+    final start = (step['start'] as int?) ?? atMs;
+    step['stop'] = max(start, atMs);
+    final incomingStatus =
+        payload['status']?.toString().trim().toLowerCase() ?? '';
+    if (incomingStatus == 'failed' || incomingStatus == 'broken') {
+      step['status'] = _mergeRuntimeStatus(
+        current: step['status'] as String?,
+        incoming: incomingStatus,
+      );
+      _bubbleCustomStepStatus(
+          runtime: runtime, stepId: id, status: incomingStatus);
+    } else {
+      step['status'] = _mergeRuntimeStatus(
+        current: step['status'] as String?,
+        incoming: 'passed',
+      );
+    }
+    runtime.openAllureStepIds.remove(id);
+  }
+
+  void _handleAllureCustomStepParameter({
+    required _AllureTestRuntime runtime,
+    required Map<String, dynamic> payload,
+  }) {
+    final step = _resolveAllureCustomStep(runtime, payload);
+    if (step == null) return;
+    final name = payload['name']?.toString().trim() ?? '';
+    if (name.isEmpty) return;
+    final value = payload['value']?.toString() ?? '';
+    final parameters =
+        (step['parameters'] as List?)?.cast<Map<String, dynamic>>() ??
+            <Map<String, dynamic>>[];
+    parameters.add({
+      'name': name,
+      'value': value,
+    });
+    step['parameters'] = parameters;
+  }
+
+  void _handleAllureCustomStepAttachment({
+    required _AllureTestRuntime runtime,
+    required Map<String, dynamic> payload,
+    required String type,
+    required String extension,
+  }) {
+    final step = _resolveAllureCustomStep(runtime, payload);
+    if (step == null) return;
+    final name = payload['name']?.toString().trim();
+    final content = payload['content']?.toString() ?? '';
+    if (content.trim().isEmpty) return;
+    final attachments =
+        (step['attachments'] as List?)?.cast<Map<String, dynamic>>() ??
+            <Map<String, dynamic>>[];
+    attachments.add(
+      _writeStringAttachment(
+        name: (name == null || name.isEmpty) ? 'attachment' : name,
+        content: content,
+        type: type,
+        extension: extension,
+      ),
+    );
+    step['attachments'] = attachments;
+  }
+
+  Map<String, dynamic>? _resolveAllureCustomStep(
+    _AllureTestRuntime runtime,
+    Map<String, dynamic> payload,
+  ) {
+    final id = payload['id']?.toString().trim() ?? '';
+    if (id.isNotEmpty) {
+      return runtime.allureStepsById[id];
+    }
+    if (runtime.openAllureStepIds.isEmpty) {
+      return null;
+    }
+    final lastId = runtime.openAllureStepIds.last;
+    return runtime.allureStepsById[lastId];
+  }
+
+  void _appendAllureCustomStep({
+    required _AllureTestRuntime runtime,
+    required String id,
+    required Map<String, dynamic> step,
+  }) {
+    if (runtime.openAllureStepIds.isEmpty) {
+      runtime.steps.add(step);
+    } else {
+      final parentId = runtime.openAllureStepIds.last;
+      final parent = runtime.allureStepsById[parentId];
+      if (parent == null) {
+        runtime.steps.add(step);
+      } else {
+        final nestedSteps =
+            (parent['steps'] as List?)?.cast<Map<String, dynamic>>() ??
+                <Map<String, dynamic>>[];
+        nestedSteps.add(step);
+        parent['steps'] = nestedSteps;
+        final start = (step['start'] as int?) ?? runtime.startMs;
+        final stop = (step['stop'] as int?) ?? start;
+        parent['start'] = min((parent['start'] as int?) ?? start, start);
+        parent['stop'] = max((parent['stop'] as int?) ?? stop, stop);
+      }
+    }
+    runtime.allureStepsById[id] = step;
+    runtime.openAllureStepIds.add(id);
+  }
+
+  void _bubbleCustomStepStatus({
+    required _AllureTestRuntime runtime,
+    required String stepId,
+    required String status,
+  }) {
+    final index = runtime.openAllureStepIds.indexOf(stepId);
+    if (index <= 0) return;
+    for (var i = index - 1; i >= 0; i--) {
+      final parentId = runtime.openAllureStepIds[i];
+      final parent = runtime.allureStepsById[parentId];
+      if (parent == null) continue;
+      parent['status'] = _mergeRuntimeStatus(
+        current: parent['status'] as String?,
+        incoming: status,
+      );
+    }
+  }
+
   bool _isHttpTitle(String title) {
     final upper = title.trim().toUpperCase();
     return upper.startsWith('HTTP');
@@ -1472,13 +1768,27 @@ class ManagerAllureReportService {
     required String name,
     required String content,
   }) {
-    final source = _nextArtifactName('attachment', 'txt');
+    return _writeStringAttachment(
+      name: name,
+      content: content,
+      type: 'text/plain',
+      extension: 'txt',
+    );
+  }
+
+  Map<String, dynamic> _writeStringAttachment({
+    required String name,
+    required String content,
+    required String type,
+    required String extension,
+  }) {
+    final source = _nextArtifactName('attachment', extension);
     final path = '$_resultsDirPath$source';
     File(path).writeAsStringSync(content, flush: true);
     return {
       'name': name,
       'source': source,
-      'type': 'text/plain',
+      'type': type,
     };
   }
 
@@ -1907,6 +2217,18 @@ class ManagerAllureReportService {
     return hasFailed ? 'failed' : null;
   }
 
+  void _closeOpenAllureCustomSteps(_AllureTestRuntime runtime) {
+    if (runtime.openAllureStepIds.isEmpty) return;
+    final stopMs = runtime.stopMs;
+    for (final stepId in runtime.openAllureStepIds.toList().reversed) {
+      final step = runtime.allureStepsById[stepId];
+      if (step == null) continue;
+      final start = (step['start'] as int?) ?? stopMs;
+      step['stop'] = max(start, stopMs);
+    }
+    runtime.openAllureStepIds.clear();
+  }
+
   int _usToMs(int value) => value ~/ 1000;
 
   String _detectImageExtension(Uint8List bytes) {
@@ -2292,6 +2614,8 @@ class _AllureTestRuntime {
   final List<Map<String, dynamic>> attachments = [];
   final Set<String> customTags = {};
   final Set<String> errorSignatures = {};
+  final List<String> openAllureStepIds = [];
+  final Map<String, Map<String, dynamic>> allureStepsById = {};
   final Map<String, _AllureFixtureRuntime> beforeFixtures = {};
   final Map<String, _AllureFixtureRuntime> afterFixtures = {};
   final StringBuffer logBuffer = StringBuffer();

@@ -1,4 +1,5 @@
 import 'package:convenient_test_common/convenient_test_common.dart';
+import 'package:convenient_test_manager/components/home_page/allure_custom_step_widget.dart';
 import 'package:convenient_test_manager/components/home_page/log_entry_widget.dart';
 import 'package:convenient_test_manager/components/misc/state_indicator.dart';
 import 'package:convenient_test_manager/misc/protobuf_extensions.dart';
@@ -6,6 +7,7 @@ import 'package:convenient_test_manager/services/misc_flutter_service.dart';
 import 'package:convenient_test_manager/stores/highlight_store.dart';
 import 'package:convenient_test_manager/stores/home_page_store.dart';
 import 'package:convenient_test_manager/stores/video_player_store.dart';
+import 'package:convenient_test_manager_dart/stores/allure_custom_step_store.dart';
 import 'package:convenient_test_manager_dart/stores/log_store.dart';
 import 'package:convenient_test_manager_dart/stores/suite_info_store.dart';
 import 'package:flutter/material.dart';
@@ -292,6 +294,25 @@ class _TestInfoSectionBuilder extends StaticSectionBuilder {
   }
 
   Iterable<StaticSection> _buildLogEntries(SimplifiedStateEnum state) sync* {
+    final customStepStore = GetIt.I.get<AllureCustomStepStore>();
+    if (customStepStore.hasStepsForTest(info.id)) {
+      final rows = _flattenAllureCustomStepRows(customStepStore);
+      if (rows.isNotEmpty) {
+        yield StaticSection(
+          metadata: TestInfoLogEntrySectionMetadata(
+            testInfoId: info.id,
+          ),
+          count: rows.length,
+          builder: (_, i) => HomePageAllureCustomStepWidget(
+            order: i,
+            node: rows[i].node,
+            depth: rows[i].depth,
+          ),
+        );
+        return;
+      }
+    }
+
     final logEntryIds = visibleLogEntryIds;
 
     if (logEntryIds.isEmpty) {
@@ -385,6 +406,31 @@ class _TestInfoSectionBuilder extends StaticSectionBuilder {
 
   bool get expanding =>
       GetIt.I.get<HighlightStore>().expandGroupEntryMap[info.id];
+
+  List<_AllureCustomStepRow> _flattenAllureCustomStepRows(
+    AllureCustomStepStore store,
+  ) {
+    final homePageStore = GetIt.I.get<HomePageStore>();
+    final rows = <_AllureCustomStepRow>[];
+
+    void visit(String stepId, int depth) {
+      final node = store.stepById(stepId);
+      if (node == null) return;
+      rows.add(_AllureCustomStepRow(node: node, depth: depth));
+      if (!node.hasChildren || !homePageStore.allureStepExpandMap[node.id]) {
+        return;
+      }
+      for (final childId in node.childIds) {
+        visit(childId, depth + 1);
+      }
+    }
+
+    for (final rootId in store.rootStepIdsForTest(info.id)) {
+      visit(rootId, 0);
+    }
+
+    return rows;
+  }
 }
 
 @immutable
@@ -392,6 +438,16 @@ class TestInfoLogEntrySectionMetadata {
   final int testInfoId;
 
   const TestInfoLogEntrySectionMetadata({required this.testInfoId});
+}
+
+class _AllureCustomStepRow {
+  final AllureCustomStepNode node;
+  final int depth;
+
+  const _AllureCustomStepRow({
+    required this.node,
+    required this.depth,
+  });
 }
 
 class _RunTestButton extends StatelessWidget {

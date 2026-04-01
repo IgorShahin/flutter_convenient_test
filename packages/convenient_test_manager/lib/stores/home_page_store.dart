@@ -25,6 +25,9 @@ abstract class _HomePageStore with Store {
   final logEntryExpandErrorInfoMap =
       ObservableDefaultMap<int, bool>(createDefaultValue: (_) => false);
 
+  final allureStepExpandMap =
+      ObservableDefaultMap<String, bool>(createDefaultValue: (_) => true);
+
   final allurePublishUiState = Observable(AllurePublishUiState.idle);
 }
 

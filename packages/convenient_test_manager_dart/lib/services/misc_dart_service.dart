@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:convenient_test_common_dart/convenient_test_common_dart.dart';
 import 'package:convenient_test_manager_dart/services/report_handler_service.dart';
 import 'package:convenient_test_manager_dart/services/vm_service_wrapper_service.dart';
+import 'package:convenient_test_manager_dart/stores/allure_custom_step_store.dart';
 import 'package:convenient_test_manager_dart/stores/log_store.dart';
 import 'package:convenient_test_manager_dart/stores/raw_log_store.dart';
 import 'package:convenient_test_manager_dart/stores/suite_info_store.dart';
@@ -43,6 +44,7 @@ class MiscDartService {
     Log.d(_kTag, 'clearAll');
 
     GetIt.I.get<SuiteInfoStore>().clear();
+    GetIt.I.get<AllureCustomStepStore>().clear();
     GetIt.I.get<LogStore>().clear();
     GetIt.I.get<RawLogStore>().clear();
     // Do not clear VideoRecorderStore here.

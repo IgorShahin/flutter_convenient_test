@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -6,6 +7,7 @@ import 'package:convenient_test_common_dart/convenient_test_common_dart.dart';
 import 'package:convenient_test_manager_dart/services/fs_service.dart';
 import 'package:convenient_test_manager_dart/services/misc_dart_service.dart';
 import 'package:convenient_test_manager_dart/services/report_saver_service.dart';
+import 'package:convenient_test_manager_dart/stores/allure_custom_step_store.dart';
 import 'package:convenient_test_manager_dart/stores/highlight_store.dart';
 import 'package:convenient_test_manager_dart/stores/log_store.dart';
 import 'package:convenient_test_manager_dart/stores/raw_log_store.dart';
@@ -23,6 +25,13 @@ class ReportHandlerService {
   static const _kStaleVideoTolerance = Duration(seconds: 1);
   static const _kTextAttachmentTitlePrefix = '__CT_TEXT_ATTACHMENT__:';
   static const _kAllureTagsPrefix = '__CT_ALLURE_TAGS__:';
+  static const _kAllureStepStartPrefix = '__CT_ALLURE_STEP_START__:';
+  static const _kAllureStepEndPrefix = '__CT_ALLURE_STEP_END__:';
+  static const _kAllureStepParameterPrefix = '__CT_ALLURE_STEP_PARAMETER__:';
+  static const _kAllureStepTextAttachmentPrefix =
+      '__CT_ALLURE_STEP_TEXT_ATTACHMENT__:';
+  static const _kAllureStepJsonAttachmentPrefix =
+      '__CT_ALLURE_STEP_JSON_ATTACHMENT__:';
 
   /// handle a report sent by the worker.
   /// doClear: if handleSuiteInfoProto should clear the already known suite info.
@@ -138,15 +147,104 @@ class ReportHandlerService {
   Future<void> _handleRunnerMessage(RunnerMessage request) async {
     Log.d(_kTag, 'Message: ${request.message}');
 
-    if (request.message.startsWith(_kAllureTagsPrefix)) {
-      return;
-    }
-
     final testEntryId =
         _suiteInfoStore.suiteInfo?.getEntryIdFromName(request.testName);
+    if (testEntryId != null) {
+      final customStepStore = GetIt.I.get<AllureCustomStepStore>();
+      final stepStart = _parseRunnerMessageJsonMarker(
+          request.message, _kAllureStepStartPrefix);
+      if (stepStart != null) {
+        final id = stepStart['id']?.toString().trim() ?? '';
+        final name = stepStart['name']?.toString().trim() ?? '';
+        if (id.isNotEmpty && name.isNotEmpty) {
+          customStepStore.startStep(
+            testEntryId: testEntryId,
+            id: id,
+            name: name,
+          );
+        }
+        return;
+      }
+      final stepEnd =
+          _parseRunnerMessageJsonMarker(request.message, _kAllureStepEndPrefix);
+      if (stepEnd != null) {
+        final id = stepEnd['id']?.toString().trim() ?? '';
+        final status = stepEnd['status']?.toString().trim().toLowerCase() ?? '';
+        if (id.isNotEmpty) {
+          customStepStore.endStep(
+            testEntryId: testEntryId,
+            id: id,
+            status: status.isEmpty ? 'passed' : status,
+          );
+        }
+        return;
+      }
+      final stepParameter = _parseRunnerMessageJsonMarker(
+        request.message,
+        _kAllureStepParameterPrefix,
+      );
+      if (stepParameter != null) {
+        final id = stepParameter['id']?.toString().trim() ?? '';
+        if (id.isNotEmpty) {
+          customStepStore.addParameter(id: id);
+        }
+        return;
+      }
+      final stepTextAttachment = _parseRunnerMessageJsonMarker(
+        request.message,
+        _kAllureStepTextAttachmentPrefix,
+      );
+      if (stepTextAttachment != null) {
+        final id = stepTextAttachment['id']?.toString().trim() ?? '';
+        if (id.isNotEmpty) {
+          customStepStore.addAttachment(id: id);
+        }
+        return;
+      }
+      final stepJsonAttachment = _parseRunnerMessageJsonMarker(
+        request.message,
+        _kAllureStepJsonAttachmentPrefix,
+      );
+      if (stepJsonAttachment != null) {
+        final id = stepJsonAttachment['id']?.toString().trim() ?? '';
+        if (id.isNotEmpty) {
+          customStepStore.addAttachment(id: id);
+        }
+        return;
+      }
+    }
+
+    if (_isControlRunnerMessage(request.message)) {
+      return;
+    }
     if (testEntryId == null) return;
 
     _rawLogStore.rawLogInTest[testEntryId] += '${request.message}\n';
+  }
+
+  bool _isControlRunnerMessage(String message) {
+    return message.startsWith(_kAllureTagsPrefix) ||
+        message.startsWith(_kAllureStepStartPrefix) ||
+        message.startsWith(_kAllureStepEndPrefix) ||
+        message.startsWith(_kAllureStepParameterPrefix) ||
+        message.startsWith(_kAllureStepTextAttachmentPrefix) ||
+        message.startsWith(_kAllureStepJsonAttachmentPrefix);
+  }
+
+  Map<String, dynamic>? _parseRunnerMessageJsonMarker(
+    String message,
+    String prefix,
+  ) {
+    if (!message.startsWith(prefix)) return null;
+    final raw = message.substring(prefix.length).trim();
+    if (raw.isEmpty) return const <String, dynamic>{};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return const <String, dynamic>{};
+      return decoded.cast<String, dynamic>();
+    } catch (_) {
+      return const <String, dynamic>{};
+    }
   }
 
   Future<void> _handleRunnerStateChange(RunnerStateChange request) async {
