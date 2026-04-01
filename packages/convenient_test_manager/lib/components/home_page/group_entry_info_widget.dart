@@ -320,8 +320,8 @@ class _TestInfoSectionBuilder extends StaticSectionBuilder {
             order: i,
             testEntryId: info.id,
             logEntryId: logEntryIds[i],
-            running:
-                state == SimplifiedStateEnum.running && i == logEntryIds.length - 1,
+            running: state == SimplifiedStateEnum.running &&
+                i == logEntryIds.length - 1,
             isSetupPhase: i < setupEndExclusive,
             setupGroupLabel: setupGroupLabel,
           );

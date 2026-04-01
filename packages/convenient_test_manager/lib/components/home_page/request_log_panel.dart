@@ -379,8 +379,8 @@ String? _extractErrorType(String? errorPayload) {
   if (errorPayload == null || errorPayload.trim().isEmpty) {
     return null;
   }
-  final match = RegExp(r'^type:\s*([^\n\r]+)$', multiLine: true)
-      .firstMatch(errorPayload);
+  final match =
+      RegExp(r'^type:\s*([^\n\r]+)$', multiLine: true).firstMatch(errorPayload);
   return match?.group(1)?.trim();
 }
 

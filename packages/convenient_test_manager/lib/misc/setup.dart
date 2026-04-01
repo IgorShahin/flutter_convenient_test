@@ -46,8 +46,7 @@ Future<void> setup({
       getIt.get<WorkerVmEndpointHistoryService>();
   await workerEndpointHistoryService.load();
   final lastEndpoint = workerEndpointHistoryService.lastUsed;
-  if (lastEndpoint != null &&
-      getIt.isRegistered<VmServiceWrapperService>()) {
+  if (lastEndpoint != null && getIt.isRegistered<VmServiceWrapperService>()) {
     final vmServiceWrapperService = getIt.get<VmServiceWrapperService>();
     vmServiceWrapperService.setWorkerVmEndpoint(
       host: lastEndpoint.host,

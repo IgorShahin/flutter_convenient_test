@@ -48,7 +48,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
   @override
   void initState() {
     super.initState();
-    widget.controller._seekDelegate = (pos) async => widget.controller._emitPosition(pos);
+    widget.controller._seekDelegate =
+        (pos) async => widget.controller._emitPosition(pos);
     widget.controller._playDelegate = () async {};
     widget.controller._pauseDelegate = () async {};
     widget.controller._emitPosition(widget.startTime);
@@ -56,7 +57,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    return AttachableStateAttacherWidget<VideoPlayerController, _VideoPlayerState>(
+    return AttachableStateAttacherWidget<VideoPlayerController,
+        _VideoPlayerState>(
       target: widget.controller,
       state: this,
       child: const Center(

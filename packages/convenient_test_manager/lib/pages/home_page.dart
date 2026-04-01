@@ -182,8 +182,7 @@ class _BodyState extends State<_Body> {
         },
         onHorizontalDragUpdate: (details) {
           if (totalWidth <= 0) return;
-          final next =
-              _leftPanelFraction + details.delta.dx / totalWidth;
+          final next = _leftPanelFraction + details.delta.dx / totalWidth;
           setState(() {
             _leftPanelFraction = next.clamp(minFraction, maxFraction);
           });
