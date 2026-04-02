@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:convenient_test_common/convenient_test_common.dart';
 import 'package:mobx/mobx.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
@@ -37,7 +39,31 @@ abstract class _HomePageStore with Store {
   @observable
   String? highlightAllureStepId;
 
+  @observable
+  bool allureAttachmentPreviewLoading = false;
+
   final allurePublishUiState = Observable(AllurePublishUiState.idle);
+
+  int _allureAttachmentPreviewRequestId = 0;
+
+  @action
+  void previewAllureStepAttachments(
+    String? stepId, {
+    bool showLoading = true,
+  }) {
+    final requestId = ++_allureAttachmentPreviewRequestId;
+    highlightAllureStepId = stepId;
+    if (stepId == null || !showLoading) {
+      allureAttachmentPreviewLoading = false;
+      return;
+    }
+
+    allureAttachmentPreviewLoading = true;
+    Future<void>.delayed(const Duration(milliseconds: 140), () {
+      if (requestId != _allureAttachmentPreviewRequestId) return;
+      allureAttachmentPreviewLoading = false;
+    });
+  }
 }
 
 enum HomePageSecondaryPanelTab {

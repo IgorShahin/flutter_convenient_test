@@ -276,7 +276,10 @@ class HomePageAllureCustomStepWidget extends StatelessWidget {
       highlightStore.suppressAutoJumpTemporarily();
     }
 
-    homePageStore.highlightAllureStepId = targetState ? node.id : null;
+    homePageStore.previewAllureStepAttachments(
+      targetState ? node.id : null,
+      showLoading: targetState && node.attachments.isNotEmpty,
+    );
     if (targetState && node.attachments.isNotEmpty) {
       homePageStore.activeSecondaryPanelTab =
           HomePageSecondaryPanelTab.attachments;

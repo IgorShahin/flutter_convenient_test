@@ -16,6 +16,22 @@ class HomePageAllureAttachmentPanel extends StatelessWidget {
     return Observer(
       builder: (_) {
         final stepId = homePageStore.highlightAllureStepId;
+        if (homePageStore.allureAttachmentPreviewLoading) {
+          return const Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(height: 12),
+                Text('Loading attachments...'),
+              ],
+            ),
+          );
+        }
         if (stepId == null) {
           return const Center(
             child: Text('Hover a step with attachments to preview them'),
