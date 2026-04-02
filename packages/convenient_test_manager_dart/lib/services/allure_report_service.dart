@@ -136,22 +136,7 @@ class ManagerAllureReportService {
       Log.w(_kTag, 'openLatestReportSite skipped on non-io runtime');
       return false;
     }
-    await _ensureActiveRunContext();
-    final reportDirPath =
-        await GetIt.I.get<FsService>().getActiveSuperRunDataSubDirectory(
-              category: 'AllureReport',
-            );
-    final reportIndexPath = '$reportDirPath/index.html';
-    final reportIndexFile = File(reportIndexPath);
-    if (!reportIndexFile.existsSync()) {
-      return generateLocalSiteIfPossible(openWhenDone: true);
-    }
-
-    final started =
-        await _openUrlDetached(Uri.file(reportIndexPath).toString());
-    if (!started) return false;
-    Log.i(_kTag, 'local allure report opened path=$reportIndexPath');
-    return true;
+    return generateLocalSiteIfPossible(openWhenDone: true);
   }
 
   Future<bool> clearRemoteHistory({bool clearResults = false}) async {
@@ -167,12 +152,7 @@ class ManagerAllureReportService {
   Future<void> autoPublishToDockerIfConfigured({bool force = false}) async {
     if (!supportsIoPlatform) return;
 
-    final superRunId =
-        GetIt.I.get<WorkerSuperRunStore>().currSuperRunController.superRunId;
-    if (!force && _lastAutoPublishAttemptedSuperRunId == superRunId) return;
-    if (_lastAutoPublishedSuperRunId == superRunId) return;
     if (_autoPublishInProgress) return;
-    _lastAutoPublishAttemptedSuperRunId = superRunId;
 
     _autoPublishInProgress = true;
     try {
@@ -181,14 +161,13 @@ class ManagerAllureReportService {
       if (!generated) {
         Log.i(
           _kTag,
-          'local allure generation skipped or failed superRunId=$superRunId',
+          'local allure generation skipped or failed',
         );
         return;
       }
-      _lastAutoPublishedSuperRunId = superRunId;
       Log.i(
         _kTag,
-        'local allure generation completed superRunId=$superRunId',
+        'local allure generation completed',
       );
     } on TimeoutException catch (e, s) {
       Log.w(_kTag, 'local allure generation timeout e=$e s=$s');
@@ -1190,8 +1169,6 @@ class ManagerAllureReportService {
   bool _deferredSetUpAllInjected = false;
   SuiteInfo? _suiteInfo;
   String? _resultsDirPath;
-  String? _lastAutoPublishAttemptedSuperRunId;
-  String? _lastAutoPublishedSuperRunId;
   bool _autoPublishInProgress = false;
   int _artifactCounter = 0;
   int _uuidCounter = 0;
