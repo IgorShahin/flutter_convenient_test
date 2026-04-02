@@ -60,12 +60,63 @@ mixin _$HomePageStore on _HomePageStore, Store {
     });
   }
 
+  late final _$highlightAllureStepIdAtom =
+      Atom(name: '_HomePageStore.highlightAllureStepId', context: context);
+
+  @override
+  String? get highlightAllureStepId {
+    _$highlightAllureStepIdAtom.reportRead();
+    return super.highlightAllureStepId;
+  }
+
+  @override
+  set highlightAllureStepId(String? value) {
+    _$highlightAllureStepIdAtom.reportWrite(value, super.highlightAllureStepId,
+        () {
+      super.highlightAllureStepId = value;
+    });
+  }
+
+  late final _$allureAttachmentPreviewLoadingAtom = Atom(
+      name: '_HomePageStore.allureAttachmentPreviewLoading', context: context);
+
+  @override
+  bool get allureAttachmentPreviewLoading {
+    _$allureAttachmentPreviewLoadingAtom.reportRead();
+    return super.allureAttachmentPreviewLoading;
+  }
+
+  @override
+  set allureAttachmentPreviewLoading(bool value) {
+    _$allureAttachmentPreviewLoadingAtom
+        .reportWrite(value, super.allureAttachmentPreviewLoading, () {
+      super.allureAttachmentPreviewLoading = value;
+    });
+  }
+
+  late final _$_HomePageStoreActionController =
+      ActionController(name: '_HomePageStore', context: context);
+
+  @override
+  void previewAllureStepAttachments(String? stepId, {bool showLoading = true}) {
+    final _$actionInfo = _$_HomePageStoreActionController.startAction(
+        name: '_HomePageStore.previewAllureStepAttachments');
+    try {
+      return super.previewAllureStepAttachments(stepId,
+          showLoading: showLoading);
+    } finally {
+      _$_HomePageStoreActionController.endAction(_$actionInfo);
+    }
+  }
+
   @override
   String toString() {
     return '''
 displayLoadedReportMode: ${displayLoadedReportMode},
 activeSecondaryPanelTab: ${activeSecondaryPanelTab},
-expandSecondaryPanel: ${expandSecondaryPanel}
+expandSecondaryPanel: ${expandSecondaryPanel},
+highlightAllureStepId: ${highlightAllureStepId},
+allureAttachmentPreviewLoading: ${allureAttachmentPreviewLoading}
     ''';
   }
 }
