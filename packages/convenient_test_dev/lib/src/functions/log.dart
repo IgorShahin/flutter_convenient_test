@@ -233,6 +233,11 @@ Future<void> convenientTestAddAllureTags(
   final reporterService = WorkerReportSaverService.I;
   if (reporterService == null) return;
 
+  Log.i(
+    LogHandle._kTag,
+    '🟣 ALLURE TAGS ${normalized.join(', ')}',
+  );
+
   final testName = (liveTest ?? Invoker.current!.liveTest).test.name;
   await reporterService.report(
     ReportItem(
@@ -251,6 +256,11 @@ class AllureStepHandle {
   const AllureStepHandle._(this._id, this._testName);
 
   Future<void> parameter(String name, Object? value) async {
+    final valueText = _shortConsoleValue(value?.toString() ?? '');
+    Log.i(
+      LogHandle._kTag,
+      '🟣 ALLURE PARAM #$_id $name: $valueText',
+    );
     await _reportRunnerMessage(
       _testName,
       '$_kAllureStepParameterPrefix${jsonEncode({
@@ -265,6 +275,10 @@ class AllureStepHandle {
     required String name,
     required String content,
   }) async {
+    Log.i(
+      LogHandle._kTag,
+      '🟣 ALLURE ATTACH TEXT #$_id $name (${content.length} chars)',
+    );
     await _reportRunnerMessage(
       _testName,
       '$_kAllureStepTextAttachmentPrefix${jsonEncode({
@@ -279,12 +293,17 @@ class AllureStepHandle {
     required String name,
     required Object? value,
   }) async {
+    final content = const JsonEncoder.withIndent('  ').convert(value);
+    Log.i(
+      LogHandle._kTag,
+      '🟣 ALLURE ATTACH JSON #$_id $name (${content.length} chars)',
+    );
     await _reportRunnerMessage(
       _testName,
       '$_kAllureStepJsonAttachmentPrefix${jsonEncode({
             'id': _id,
             'name': name,
-            'content': const JsonEncoder.withIndent('  ').convert(value),
+            'content': content,
           })}',
     );
   }
@@ -301,6 +320,10 @@ class AllureStepHandle {
   }
 
   Future<void> end({String status = 'passed'}) async {
+    Log.i(
+      LogHandle._kTag,
+      '🟣 ALLURE END #$_id $status',
+    );
     await _reportRunnerMessage(
       _testName,
       '$_kAllureStepEndPrefix${jsonEncode({
@@ -317,6 +340,10 @@ Future<AllureStepHandle> convenientTestOpenAllureStep(
 }) async {
   final testName = _liveTestName(liveTest);
   final id = IdGenerator.instance.nextId().toString();
+  Log.i(
+    LogHandle._kTag,
+    '🟣 ALLURE START #$id ${_shortConsoleValue(name)}',
+  );
   await _reportRunnerMessage(
     testName,
     '$_kAllureStepStartPrefix${jsonEncode({
@@ -391,6 +418,12 @@ Future<void> _reportRunnerMessage(String testName, String message) async {
       ),
     ),
   );
+}
+
+String _shortConsoleValue(String value, {int maxChars = 160}) {
+  final singleLine = value.replaceAll('\n', r'\n').trim();
+  if (singleLine.length <= maxChars) return singleLine;
+  return '${singleLine.substring(0, maxChars)}...';
 }
 
 Future<T> _maybeRunAsync<T extends Object>(
