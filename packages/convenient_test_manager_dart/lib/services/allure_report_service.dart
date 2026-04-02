@@ -33,6 +33,7 @@ class ManagerAllureReportService {
       '__CT_ALLURE_STEP_JSON_ATTACHMENT__:';
   late final _events = _AllureEventProcessor(this);
   late final _persistence = _AllurePersistence(this);
+  String? _cachedAllureExecutablePath;
 
   Future<void> save(ReportCollection request) async {
     if (!supportsIoPlatform) return;
@@ -87,10 +88,18 @@ class ManagerAllureReportService {
             );
 
     try {
+      final allureExecutable = await _resolveAllureExecutable();
+      if (allureExecutable == null) {
+        Log.w(
+          _kTag,
+          'local allure generation skipped: allure executable was not found',
+        );
+        return false;
+      }
       final result = await Process.run(
-        'allure',
+        allureExecutable,
         ['generate', resultsDirPath, '--clean', '-o', reportDirPath],
-        runInShell: true,
+        runInShell: false,
       ).timeout(const Duration(seconds: 60));
       if (result.exitCode != 0) {
         Log.w(
@@ -105,7 +114,7 @@ class ManagerAllureReportService {
     } catch (e, s) {
       Log.w(
         _kTag,
-        'local allure generation skipped (is `allure` installed?) e=$e s=$s',
+        'local allure generation failed e=$e s=$s',
       );
       return false;
     }
@@ -191,6 +200,36 @@ class ManagerAllureReportService {
   }
 
   Future<void> _handleItem(ReportItem item) => _events.handleItem(item);
+
+  Future<String?> _resolveAllureExecutable() async {
+    final cached = _cachedAllureExecutablePath;
+    if (cached != null && File(cached).existsSync()) {
+      return cached;
+    }
+
+    final candidates = <String>{
+      if ((Platform.environment['ALLURE_EXECUTABLE'] ?? '').trim().isNotEmpty)
+        Platform.environment['ALLURE_EXECUTABLE']!.trim(),
+      ...((Platform.environment['PATH'] ?? '')
+          .split(Platform.isWindows ? ';' : ':')
+          .where((e) => e.trim().isNotEmpty)
+          .map((dir) => '$dir/allure')),
+      '/opt/homebrew/bin/allure',
+      '/usr/local/bin/allure',
+      '/opt/local/bin/allure',
+      '/usr/bin/allure',
+    };
+
+    for (final candidate in candidates) {
+      final file = File(candidate);
+      if (!file.existsSync()) continue;
+      _cachedAllureExecutablePath = candidate;
+      Log.i(_kTag, 'resolved allure executable path=$candidate');
+      return candidate;
+    }
+
+    return null;
+  }
 
   Future<void> _finalize(_AllureTestRuntime runtime) =>
       _persistence.finalize(runtime);
