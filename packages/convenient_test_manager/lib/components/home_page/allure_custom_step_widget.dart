@@ -280,7 +280,10 @@ class HomePageAllureCustomStepWidget extends StatelessWidget {
       targetState ? node.id : null,
       showLoading: targetState && node.attachments.isNotEmpty,
     );
-    if (targetState && node.attachments.isNotEmpty) {
+    if (targetState &&
+        node.attachments.isNotEmpty &&
+        homePageStore.activeSecondaryPanelTab !=
+            HomePageSecondaryPanelTab.attachments) {
       homePageStore.activeSecondaryPanelTab =
           HomePageSecondaryPanelTab.attachments;
     }

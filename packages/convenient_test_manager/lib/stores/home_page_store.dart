@@ -44,14 +44,18 @@ abstract class _HomePageStore with Store {
 
   final allurePublishUiState = Observable(AllurePublishUiState.idle);
 
-  int _allureAttachmentPreviewRequestId = 0;
+  Timer? _allureAttachmentPreviewTimer;
 
   @action
   void previewAllureStepAttachments(
     String? stepId, {
     bool showLoading = true,
   }) {
-    final requestId = ++_allureAttachmentPreviewRequestId;
+    if (stepId == highlightAllureStepId && !allureAttachmentPreviewLoading) {
+      return;
+    }
+
+    _allureAttachmentPreviewTimer?.cancel();
     highlightAllureStepId = stepId;
     if (stepId == null || !showLoading) {
       allureAttachmentPreviewLoading = false;
@@ -59,8 +63,10 @@ abstract class _HomePageStore with Store {
     }
 
     allureAttachmentPreviewLoading = true;
-    Future<void>.delayed(const Duration(milliseconds: 140), () {
-      if (requestId != _allureAttachmentPreviewRequestId) return;
+    final expectedStepId = stepId;
+    _allureAttachmentPreviewTimer =
+        Timer(const Duration(milliseconds: 140), () {
+      if (highlightAllureStepId != expectedStepId) return;
       allureAttachmentPreviewLoading = false;
     });
   }
