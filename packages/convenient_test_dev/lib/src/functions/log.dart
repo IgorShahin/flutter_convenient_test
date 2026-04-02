@@ -52,6 +52,8 @@ LogHandle convenientTestLog(
 }
 
 final _activeConvenientTestNames = <String>{};
+final _allureConsoleOpenStepIdsByTestName = <String, List<String>>{};
+final _allureConsoleDepthByStepId = <String, int>{};
 const _kTextAttachmentTitlePrefix = '__CT_TEXT_ATTACHMENT__:';
 const _kAllureTagsPrefix = '__CT_ALLURE_TAGS__:';
 const _kAllureStepStartPrefix = '__CT_ALLURE_STEP_START__:';
@@ -67,6 +69,12 @@ void _updateActiveTestTracking(String testName, LogSubEntryType type) {
       return;
     case LogSubEntryType.TEST_END:
       _activeConvenientTestNames.remove(testName);
+      final openStepIds = _allureConsoleOpenStepIdsByTestName.remove(testName);
+      if (openStepIds != null) {
+        for (final stepId in openStepIds) {
+          _allureConsoleDepthByStepId.remove(stepId);
+        }
+      }
       return;
     default:
       return;
@@ -260,7 +268,7 @@ class AllureStepHandle {
     final valueText = _shortConsoleValue(value?.toString() ?? '');
     Log.i(
       LogHandle._kTag,
-      '🟣 ALLURE PARAM #$_id $name: $valueText',
+      '${_allureConsoleIndentForStep(_id, extraDepth: 1)}🔹 $name: $valueText',
     );
     await _reportRunnerMessage(
       _testName,
@@ -278,7 +286,7 @@ class AllureStepHandle {
   }) async {
     Log.i(
       LogHandle._kTag,
-      '🟣 ALLURE ATTACH TEXT #$_id $name (${content.length} chars)',
+      '${_allureConsoleIndentForStep(_id, extraDepth: 1)}📎 $name [text, ${content.length} chars]',
     );
     await _reportRunnerMessage(
       _testName,
@@ -297,7 +305,7 @@ class AllureStepHandle {
     final content = const JsonEncoder.withIndent('  ').convert(value);
     Log.i(
       LogHandle._kTag,
-      '🟣 ALLURE ATTACH JSON #$_id $name (${content.length} chars)',
+      '${_allureConsoleIndentForStep(_id, extraDepth: 1)}📎 $name [json, ${content.length} chars]',
     );
     await _reportRunnerMessage(
       _testName,
@@ -321,10 +329,12 @@ class AllureStepHandle {
   }
 
   Future<void> end({String status = 'passed'}) async {
+    final indent = _allureConsoleIndentForStep(_id);
     Log.i(
       LogHandle._kTag,
-      '${_allureStatusIcon(status)} ALLURE END #$_id ${_shortConsoleValue(_name)} [$status]',
+      '$indent${_allureStatusIcon(status)} ${_shortConsoleValue(_name)}',
     );
+    _allureConsolePopStep(_testName, _id);
     await _reportRunnerMessage(
       _testName,
       '$_kAllureStepEndPrefix${jsonEncode({
@@ -341,9 +351,11 @@ Future<AllureStepHandle> convenientTestOpenAllureStep(
 }) async {
   final testName = _liveTestName(liveTest);
   final id = IdGenerator.instance.nextId().toString();
+  final depth = _allureConsolePushStep(testName, id);
+  final indent = _allureConsoleIndent(depth);
   Log.i(
     LogHandle._kTag,
-    '🟣 ALLURE START #$id ${_shortConsoleValue(name)}',
+    '$indent▶️ ${_shortConsoleValue(name)}',
   );
   await _reportRunnerMessage(
     testName,
@@ -426,6 +438,35 @@ String _shortConsoleValue(String value, {int maxChars = 160}) {
   if (singleLine.length <= maxChars) return singleLine;
   return '${singleLine.substring(0, maxChars)}...';
 }
+
+int _allureConsolePushStep(String testName, String stepId) {
+  final openSteps = _allureConsoleOpenStepIdsByTestName.putIfAbsent(
+    testName,
+    () => <String>[],
+  );
+  final depth = openSteps.length;
+  openSteps.add(stepId);
+  _allureConsoleDepthByStepId[stepId] = depth;
+  return depth;
+}
+
+void _allureConsolePopStep(String testName, String stepId) {
+  final openSteps = _allureConsoleOpenStepIdsByTestName[testName];
+  if (openSteps != null) {
+    openSteps.remove(stepId);
+    if (openSteps.isEmpty) {
+      _allureConsoleOpenStepIdsByTestName.remove(testName);
+    }
+  }
+  _allureConsoleDepthByStepId.remove(stepId);
+}
+
+String _allureConsoleIndentForStep(String stepId, {int extraDepth = 0}) {
+  final depth = (_allureConsoleDepthByStepId[stepId] ?? 0) + extraDepth;
+  return _allureConsoleIndent(depth);
+}
+
+String _allureConsoleIndent(int depth) => '  ' * depth;
 
 String _allureStatusIcon(String status) {
   switch (status.trim().toLowerCase()) {
