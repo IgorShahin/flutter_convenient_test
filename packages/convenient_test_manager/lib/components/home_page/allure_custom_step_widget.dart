@@ -271,20 +271,26 @@ class HomePageAllureCustomStepWidget extends StatelessWidget {
     final highlightStore = GetIt.I.get<HighlightStore>();
     final homePageStore = GetIt.I.get<HomePageStore>();
     final videoPlayerStore = GetIt.I.get<VideoPlayerStore>();
-    final interestLogEntryId = _calcInterestLogEntryId();
-    if (interestLogEntryId == null) return;
 
     if (fromHover) {
       highlightStore.suppressAutoJumpTemporarily();
     }
 
-    highlightStore.highlightLogEntryId = targetState ? interestLogEntryId : null;
-    highlightStore.highlightTestEntryId = targetState ? testEntryId : null;
     homePageStore.highlightAllureStepId = targetState ? node.id : null;
     if (targetState && node.attachments.isNotEmpty) {
       homePageStore.activeSecondaryPanelTab =
           HomePageSecondaryPanelTab.attachments;
     }
+
+    final interestLogEntryId = _calcInterestLogEntryId();
+    if (interestLogEntryId == null) {
+      highlightStore.highlightLogEntryId = null;
+      highlightStore.highlightTestEntryId = targetState ? testEntryId : null;
+      return;
+    }
+
+    highlightStore.highlightLogEntryId = targetState ? interestLogEntryId : null;
+    highlightStore.highlightTestEntryId = targetState ? testEntryId : null;
 
     if (targetState) {
       final logStore = GetIt.I.get<LogStore>();
