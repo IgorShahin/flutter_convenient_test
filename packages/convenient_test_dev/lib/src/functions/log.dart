@@ -252,8 +252,9 @@ Future<void> convenientTestAddAllureTags(
 class AllureStepHandle {
   final String _id;
   final String _testName;
+  final String _name;
 
-  const AllureStepHandle._(this._id, this._testName);
+  const AllureStepHandle._(this._id, this._testName, this._name);
 
   Future<void> parameter(String name, Object? value) async {
     final valueText = _shortConsoleValue(value?.toString() ?? '');
@@ -322,7 +323,7 @@ class AllureStepHandle {
   Future<void> end({String status = 'passed'}) async {
     Log.i(
       LogHandle._kTag,
-      '🟣 ALLURE END #$_id $status',
+      '${_allureStatusIcon(status)} ALLURE END #$_id ${_shortConsoleValue(_name)} [$status]',
     );
     await _reportRunnerMessage(
       _testName,
@@ -351,7 +352,7 @@ Future<AllureStepHandle> convenientTestOpenAllureStep(
           'name': name,
         })}',
   );
-  return AllureStepHandle._(id, testName);
+  return AllureStepHandle._(id, testName, name);
 }
 
 Future<T> convenientTestAllureStep<T>(
@@ -424,6 +425,21 @@ String _shortConsoleValue(String value, {int maxChars = 160}) {
   final singleLine = value.replaceAll('\n', r'\n').trim();
   if (singleLine.length <= maxChars) return singleLine;
   return '${singleLine.substring(0, maxChars)}...';
+}
+
+String _allureStatusIcon(String status) {
+  switch (status.trim().toLowerCase()) {
+    case 'passed':
+      return '✅';
+    case 'failed':
+      return '❌';
+    case 'broken':
+      return '🚫';
+    case 'skipped':
+      return '⏭️';
+    default:
+      return '🟣';
+  }
 }
 
 Future<T> _maybeRunAsync<T extends Object>(
