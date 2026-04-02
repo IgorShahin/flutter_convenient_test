@@ -51,7 +51,10 @@ abstract class _HomePageStore with Store {
     String? stepId, {
     bool showLoading = true,
   }) {
-    if (stepId == highlightAllureStepId && !allureAttachmentPreviewLoading) {
+    if (stepId == highlightAllureStepId) {
+      if (stepId == null) {
+        allureAttachmentPreviewLoading = false;
+      }
       return;
     }
 
