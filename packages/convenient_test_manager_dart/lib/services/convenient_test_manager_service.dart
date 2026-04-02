@@ -51,10 +51,7 @@ class ConvenientTestManagerService extends ConvenientTestManagerServiceBase {
       final hasExecutedTests = tearDownItems.any(
         (e) => e.resolvedExecutionFilter.allowExecuteTestNames.isNotEmpty,
       );
-      if (tearDownItems.isNotEmpty &&
-          hasExecutedTests &&
-          _workerSuperRunStore.currSuperRunController.superRunStatus ==
-              WorkerSuperRunStatus.testAllDone) {
+      if (tearDownItems.isNotEmpty && hasExecutedTests) {
         unawaited(GetIt.I
             .get<ManagerAllureReportService>()
             .autoPublishToDockerIfConfigured());
