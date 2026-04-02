@@ -284,9 +284,11 @@ class AllureStepHandle {
     required String name,
     required String content,
   }) async {
+    final indent = _allureConsoleIndentForStep(_id, extraDepth: 1);
+    final body = _attachmentConsoleBody(content, indent: '$indent  ');
     Log.i(
       LogHandle._kTag,
-      '${_allureConsoleIndentForStep(_id, extraDepth: 1)}📎 $name [text, ${content.length} chars]',
+      '$indent📎 $name [text, ${content.length} chars]$body',
     );
     await _reportRunnerMessage(
       _testName,
@@ -303,9 +305,11 @@ class AllureStepHandle {
     required Object? value,
   }) async {
     final content = const JsonEncoder.withIndent('  ').convert(value);
+    final indent = _allureConsoleIndentForStep(_id, extraDepth: 1);
+    final body = _attachmentConsoleBody(content, indent: '$indent  ');
     Log.i(
       LogHandle._kTag,
-      '${_allureConsoleIndentForStep(_id, extraDepth: 1)}📎 $name [json, ${content.length} chars]',
+      '$indent📎 $name [json, ${content.length} chars]$body',
     );
     await _reportRunnerMessage(
       _testName,
@@ -437,6 +441,19 @@ String _shortConsoleValue(String value, {int maxChars = 160}) {
   final singleLine = value.replaceAll('\n', r'\n').trim();
   if (singleLine.length <= maxChars) return singleLine;
   return '${singleLine.substring(0, maxChars)}...';
+}
+
+String _attachmentConsoleBody(
+  String content, {
+  required String indent,
+}) {
+  final trimmed = content.trimRight();
+  if (trimmed.isEmpty) return '';
+  final formatted = trimmed
+      .split('\n')
+      .map((line) => '$indent$line')
+      .join('\n');
+  return '\n$formatted';
 }
 
 int _allureConsolePushStep(String testName, String stepId) {
