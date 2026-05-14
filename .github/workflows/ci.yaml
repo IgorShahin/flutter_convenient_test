@@ -11,7 +11,7 @@ permissions:
   
 jobs:
   flutter:
-    name: ${{ matrix.package_name_and_runs_on.package_name }} on Flutter ${{ matrix.channel_version.channel }}
+    name: ${{ matrix.package_name_and_runs_on.package_name }} on Flutter ${{ matrix.channel_version.version }}
     runs-on: ${{ matrix.package_name_and_runs_on.runs_on }}
 
     strategy:
@@ -27,7 +27,7 @@ jobs:
           - {package_name: convenient_test_manager, runs_on: macos-latest}
           - {package_name: convenient_test_manager_dart, runs_on: ubuntu-latest}
         channel_version:
-          - { channel: stable }
+          - { channel: stable, version: 3.27.1 }
           # - { channel: beta }
           # see https://github.com/fzyzcjy/flutter_convenient_test/pull/319#issuecomment-1445048397
 
@@ -38,7 +38,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: ${{ matrix.channel_version.channel }}
-          # flutter-version: ${{ matrix.channel_version.version }}
+          flutter-version: ${{ matrix.channel_version.version }}
 
       - name: Install dependencies
         run: flutter pub get
@@ -64,7 +64,8 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-         channel: stable
+          channel: stable
+          flutter-version: 3.27.1
 
       - name: Enable Macos
         run: flutter config --enable-macos-desktop
@@ -117,6 +118,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: 3.27.1
 
       - name: Enable Linux
         run: |
@@ -159,6 +161,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: 3.27.1
 
       - name: Install dependencies
         run: flutter pub get
@@ -190,6 +193,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: 3.27.1
 
       - name: Enable windows build
         run: flutter config --enable-windows-desktop

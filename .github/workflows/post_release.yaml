@@ -15,16 +15,17 @@ jobs:
 
     strategy:
       matrix:
-        channel:
+        channel_version:
           # - beta # too different from stable, thus analyzer will complain
-          - stable
+          - { channel: stable, version: 3.27.1 }
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: subosito/flutter-action@v2
         with:
-          channel: ${{ matrix.channel }}
+          channel: ${{ matrix.channel_version.channel }}
+          flutter-version: ${{ matrix.channel_version.version }}
 
       - name: Use pubspec pointing to release versions
         run: |
