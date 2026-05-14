@@ -84,7 +84,8 @@ class HomePageAllureCustomStepWidget extends StatelessWidget {
               }
             },
             onTap: () {
-              final targetState = !_isActive(highlightStore.highlightLogEntryId);
+              final targetState =
+                  !_isActive(highlightStore.highlightLogEntryId);
               _handleTapOrHover(targetState: targetState);
               if (hasParameterDetails) {
                 homePageStore.allureStepDetailsExpandMap[node.id] =
@@ -295,7 +296,8 @@ class HomePageAllureCustomStepWidget extends StatelessWidget {
       return;
     }
 
-    highlightStore.highlightLogEntryId = targetState ? interestLogEntryId : null;
+    highlightStore.highlightLogEntryId =
+        targetState ? interestLogEntryId : null;
     highlightStore.highlightTestEntryId = targetState ? testEntryId : null;
 
     if (targetState) {
@@ -305,7 +307,8 @@ class HomePageAllureCustomStepWidget extends StatelessWidget {
       if (activeVideo != null &&
           logSubEntryIds != null &&
           logSubEntryIds.isNotEmpty) {
-        final interestLogSubEntry = logStore.logSubEntryMap[logSubEntryIds.last];
+        final interestLogSubEntry =
+            logStore.logSubEntryMap[logSubEntryIds.last];
         if (interestLogSubEntry != null) {
           videoPlayerStore.mainPlayerController.seek(
             activeVideo.absoluteToVideoTime(interestLogSubEntry.timeTyped),

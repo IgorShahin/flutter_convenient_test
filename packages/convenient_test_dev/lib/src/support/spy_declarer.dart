@@ -89,7 +89,10 @@ class SpyDeclarer implements Declarer {
 
     _invokeDeclarerMember(
       inner.group,
-      positionalArguments: [name, () => SpyDeclarer.withSpy(body, info: innerInfo)],
+      positionalArguments: [
+        name,
+        () => SpyDeclarer.withSpy(body, info: innerInfo)
+      ],
       namedArguments: {
         #testOn: testOn,
         #timeout: timeout,

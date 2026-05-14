@@ -449,10 +449,8 @@ String _attachmentConsoleBody(
 }) {
   final trimmed = content.trimRight();
   if (trimmed.isEmpty) return '';
-  final formatted = trimmed
-      .split('\n')
-      .map((line) => '$indent$line')
-      .join('\n');
+  final formatted =
+      trimmed.split('\n').map((line) => '$indent$line').join('\n');
   return '\n$formatted';
 }
 

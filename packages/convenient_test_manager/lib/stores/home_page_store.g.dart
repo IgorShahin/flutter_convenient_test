@@ -102,8 +102,8 @@ mixin _$HomePageStore on _HomePageStore, Store {
     final _$actionInfo = _$_HomePageStoreActionController.startAction(
         name: '_HomePageStore.previewAllureStepAttachments');
     try {
-      return super.previewAllureStepAttachments(stepId,
-          showLoading: showLoading);
+      return super
+          .previewAllureStepAttachments(stepId, showLoading: showLoading);
     } finally {
       _$_HomePageStoreActionController.endAction(_$actionInfo);
     }
