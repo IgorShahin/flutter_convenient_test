@@ -40,26 +40,35 @@ class SpyDeclarer implements Declarer {
 
   @override
   T declare<T>(T Function() body, {Map<Symbol, Object?>? zoneValues}) =>
-      zoneValues == null
-          ? inner.declare(body)
-          : runZoned(body, zoneValues: zoneValues);
+      runZoned(body, zoneValues: {#test.declarer: this, ...?zoneValues});
 
   @override
-  void setUp(dynamic Function() callback) => inner.setUp(callback);
+  void setUp(FutureOr<dynamic> Function() callback) => inner.setUp(callback);
 
   @override
-  void setUpAll(FutureOr<dynamic> Function() callback, {Object? location}) =>
-      inner.setUpAll(
-        callback,
+  void setUpAll(
+    FutureOr<dynamic> Function() callback, {
+    Object? location,
+  }) =>
+      _invokeDeclarerMember(
+        inner.setUpAll,
+        positionalArguments: [callback],
+        namedArguments: {#location: location},
       );
 
   @override
-  void tearDown(dynamic Function() callback) => inner.tearDown(callback);
+  void tearDown(FutureOr<dynamic> Function() callback) =>
+      inner.tearDown(callback);
 
   @override
-  void tearDownAll(FutureOr<dynamic> Function() callback, {Object? location}) =>
-      inner.tearDownAll(
-        callback,
+  void tearDownAll(
+    FutureOr<dynamic> Function() callback, {
+    Object? location,
+  }) =>
+      _invokeDeclarerMember(
+        inner.tearDownAll,
+        positionalArguments: [callback],
+        namedArguments: {#location: location},
       );
 
   @override
@@ -78,16 +87,19 @@ class SpyDeclarer implements Declarer {
     final innerInfo = SpyDeclarerGroup(name: _prefix(name));
     info.entries.add(innerInfo);
 
-    inner.group(
-      name,
-      () => SpyDeclarer.withSpy(body, info: innerInfo),
-      testOn: testOn,
-      timeout: timeout,
-      skip: skip,
-      onPlatform: onPlatform,
-      tags: tags,
-      retry: retry,
-      solo: solo,
+    _invokeDeclarerMember(
+      inner.group,
+      positionalArguments: [name, () => SpyDeclarer.withSpy(body, info: innerInfo)],
+      namedArguments: {
+        #testOn: testOn,
+        #timeout: timeout,
+        #skip: skip,
+        #onPlatform: onPlatform,
+        #tags: tags,
+        #location: location,
+        #retry: retry,
+        #solo: solo,
+      },
     );
   }
 
@@ -105,16 +117,19 @@ class SpyDeclarer implements Declarer {
     bool solo = false,
   }) {
     info.entries.add(SpyDeclarerTest(name: _prefix(name)));
-    inner.test(
-      name,
-      body,
-      testOn: testOn,
-      timeout: timeout,
-      skip: skip,
-      onPlatform: onPlatform,
-      tags: tags,
-      retry: retry,
-      solo: solo,
+    _invokeDeclarerMember(
+      inner.test,
+      positionalArguments: [name, body],
+      namedArguments: {
+        #testOn: testOn,
+        #timeout: timeout,
+        #skip: skip,
+        #onPlatform: onPlatform,
+        #tags: tags,
+        #location: location,
+        #retry: retry,
+        #solo: solo,
+      },
     );
   }
 
@@ -147,4 +162,23 @@ class SpyDeclarerTest extends SpyDeclarerGroupEntry {
 
   @override
   String toString() => 'SpyDeclarerTest{name: $name}';
+}
+
+void _invokeDeclarerMember(
+  Function target, {
+  required List<Object?> positionalArguments,
+  required Map<Symbol, Object?> namedArguments,
+}) {
+  final cleanedNamedArguments = <Symbol, Object?>{
+    for (final entry in namedArguments.entries)
+      if (entry.value != null || entry.key == #solo) entry.key: entry.value,
+  };
+  try {
+    Function.apply(target, positionalArguments, cleanedNamedArguments);
+  } catch (error) {
+    if (error is! NoSuchMethodError) rethrow;
+    final withoutLocation = Map<Symbol, Object?>.from(cleanedNamedArguments)
+      ..remove(#location);
+    Function.apply(target, positionalArguments, withoutLocation);
+  }
 }
