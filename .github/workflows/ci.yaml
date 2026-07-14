@@ -186,7 +186,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build_manager_windows:
-    runs-on: windows-latest
+    # Flutter 3.27.1 supports the VS 2022 CMake generator, but maps newer
+    # Visual Studio versions from windows-latest to the removed VS 2019 one.
+    runs-on: windows-2022
 
     steps:
       - uses: actions/checkout@v4
