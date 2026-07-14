@@ -100,18 +100,36 @@ sealed class GlobalConfigNullable with _$GlobalConfigNullable {
   // ignore: prefer_constructors_over_static_methods
   static Future<GlobalConfigNullable> parseConfigFile() async {
     try {
-      final homeDirectory = environmentValue('HOME');
-      Log.d(_kTag, 'parseConfigFile homeDirectory=$homeDirectory');
-      if (homeDirectory == null) return GlobalConfigNullable();
+      final homeDirectories = <String>{
+        environmentValue('HOME') ?? '',
+        environmentValue('USERPROFILE') ?? '',
+      }.where((directory) => directory.trim().isNotEmpty);
 
-      final configFilePath = '$homeDirectory/.config/convenient_test.json';
-      Log.d(_kTag, 'parseConfigFile configFilePath=$configFilePath');
+      if (homeDirectories.isEmpty) {
+        Log.w(_kTag, 'parseConfigFile: HOME and USERPROFILE are not set');
+        return GlobalConfigNullable();
+      }
 
-      if (!await File(configFilePath).exists()) return GlobalConfigNullable();
+      for (final homeDirectory in homeDirectories) {
+        final configFile = File(
+          '$homeDirectory${Platform.pathSeparator}.config'
+          '${Platform.pathSeparator}convenient_test.json',
+        );
+        Log.d(
+          _kTag,
+          'parseConfigFile configFilePath=${configFile.path}',
+        );
 
-      final configText = await File(configFilePath).readAsString();
-      return GlobalConfigNullable.fromJson(
-          jsonDecode(configText) as Map<String, Object?>);
+        if (!await configFile.exists()) continue;
+
+        final configText = await configFile.readAsString();
+        return GlobalConfigNullable.fromJson(
+          jsonDecode(configText) as Map<String, Object?>,
+        );
+      }
+
+      Log.w(_kTag, 'parseConfigFile: config file was not found');
+      return GlobalConfigNullable();
     } catch (e, s) {
       Log.w(_kTag, 'parseConfigFile error e=$e s=$s');
       return GlobalConfigNullable();
