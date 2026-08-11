@@ -345,11 +345,36 @@ abstract class __WorkerSuperRunControllerIntegrationTestIsolationMode
     final executedTestSucceeded = () {
       if (executedTestName == null) return null;
 
-      final executedTestId =
-          suiteInfoStore.suiteInfo!.getEntryIdFromName(executedTestName)!;
-      final executedTestState =
-          suiteInfoStore.testEntryStateMap[executedTestId].toState();
-      if (executedTestState.status != Status.complete) throw AssertionError;
+      final suiteInfo = suiteInfoStore.suiteInfo;
+      final executedTestId = suiteInfo?.getEntryIdFromName(executedTestName);
+      if (executedTestId == null) {
+        // A worker can terminate after an asynchronous framework error before
+        // it reports the final state. Do not leave the super run stuck.
+        Log.w(
+          _kTag,
+          'cannot resolve completed test `$executedTestName`; '
+          'continue the super run as a failed test',
+        );
+        return false;
+      }
+
+      final entryState = suiteInfoStore.testEntryStateMap[executedTestId];
+      final executedTestState = entryState.toState();
+      if (executedTestState.status != Status.complete) {
+        // The usual cause is an uncaught asynchronous error after the test
+        // body completed. Mark it as an error so the UI is consistent, then
+        // continue to the retry or next matching test.
+        Log.w(
+          _kTag,
+          'test `$executedTestName` finished without a complete state '
+          '(state=$executedTestState); mark it as error and continue',
+        );
+        suiteInfoStore.testEntryStateMap[executedTestId] = TestEntryState(
+          status: 'complete',
+          result: 'error',
+        );
+        return false;
+      }
 
       return executedTestState.result == Result.success;
     }();
