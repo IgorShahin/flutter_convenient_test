@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:collection/collection.dart';
@@ -138,6 +139,8 @@ abstract class WorkerSuperRunController {
 
   void handleTearDownAll(ResolvedExecutionFilterProto resolvedExecutionFilter);
 
+  void handleRunnerError({required String testName});
+
   bool get isInteractiveApp => this is _WorkerSuperRunControllerInteractiveApp;
 
   WorkerSuperRunStatus get superRunStatus;
@@ -178,6 +181,9 @@ class _WorkerSuperRunControllerHalt extends WorkerSuperRunController {
       ResolvedExecutionFilterProto resolvedExecutionFilter) {}
 
   @override
+  void handleRunnerError({required String testName}) {}
+
+  @override
   WorkerSuperRunStatus get superRunStatus => WorkerSuperRunStatus.na;
 
   @override
@@ -196,6 +202,9 @@ class _WorkerSuperRunControllerInteractiveApp extends WorkerSuperRunController {
   @override
   void handleTearDownAll(
       ResolvedExecutionFilterProto resolvedExecutionFilter) {}
+
+  @override
+  void handleRunnerError({required String testName}) {}
 
   @override
   WorkerSuperRunStatus get superRunStatus => WorkerSuperRunStatus.na;
@@ -250,6 +259,9 @@ abstract class __WorkerSuperRunControllerIntegrationTestClassicalMode
   }
 
   @override
+  void handleRunnerError({required String testName}) {}
+
+  @override
   WorkerSuperRunStatus get superRunStatus => seenTearDownAll
       ? WorkerSuperRunStatus.testAllDone
       : WorkerSuperRunStatus.runningTest;
@@ -273,6 +285,9 @@ abstract class __WorkerSuperRunControllerIntegrationTestIsolationMode
 
   @observable
   var state = const _ITIMState.initial();
+
+  Timer? _runnerErrorWatchdog;
+  String? _runnerErrorWatchdogTestName;
 
   __WorkerSuperRunControllerIntegrationTestIsolationMode(
       {required this.filterNameRegex})
@@ -329,6 +344,7 @@ abstract class __WorkerSuperRunControllerIntegrationTestIsolationMode
 
   @override
   void handleTearDownAll(ResolvedExecutionFilterProto resolvedExecutionFilter) {
+    _cancelRunnerErrorWatchdog();
     final suiteInfoStore = GetIt.I.get<SuiteInfoStore>();
 
     final allowExecuteTestNames = resolvedExecutionFilter.allowExecuteTestNames;
@@ -379,6 +395,62 @@ abstract class __WorkerSuperRunControllerIntegrationTestIsolationMode
       return executedTestState.result == Result.success;
     }();
 
+    _advanceAfterWorkerRun(
+      oldState: oldState,
+      executedTestName: executedTestName,
+      executedTestSucceeded: executedTestSucceeded,
+      reason: 'tearDownAll',
+    );
+  }
+
+  @override
+  void handleRunnerError({required String testName}) {
+    if (testName.trim().isEmpty || state is ITIMStateFinished) return;
+    if (_runnerErrorWatchdog?.isActive ?? false) return;
+
+    _runnerErrorWatchdogTestName = testName;
+    _runnerErrorWatchdog = Timer(const Duration(seconds: 2), () {
+      final failedTestName = _runnerErrorWatchdogTestName;
+      _runnerErrorWatchdog = null;
+      _runnerErrorWatchdogTestName = null;
+      if (failedTestName == null || state is ITIMStateFinished) return;
+
+      final suiteInfoStore = GetIt.I.get<SuiteInfoStore>();
+      final testId =
+          suiteInfoStore.suiteInfo?.getEntryIdFromName(failedTestName);
+      if (testId != null) {
+        suiteInfoStore.testEntryStateMap[testId] = TestEntryState(
+          status: 'complete',
+          result: 'error',
+        );
+      }
+
+      Log.w(
+        _kTag,
+        'RunnerError for `$failedTestName` did not reach tearDownAll; '
+        'continue the super run from watchdog',
+      );
+      _advanceAfterWorkerRun(
+        oldState: state,
+        executedTestName: failedTestName,
+        executedTestSucceeded: false,
+        reason: 'runner-error-watchdog',
+      );
+    });
+  }
+
+  void _cancelRunnerErrorWatchdog() {
+    _runnerErrorWatchdog?.cancel();
+    _runnerErrorWatchdog = null;
+    _runnerErrorWatchdogTestName = null;
+  }
+
+  void _advanceAfterWorkerRun({
+    required _ITIMState oldState,
+    required String? executedTestName,
+    required bool? executedTestSucceeded,
+    required String reason,
+  }) {
     state = _calcNextState(
       oldState: oldState,
       executedTestName: executedTestName,
@@ -394,9 +466,11 @@ abstract class __WorkerSuperRunControllerIntegrationTestIsolationMode
     }
 
     Log.d(
-        _kTag,
-        'handleTearDownAll end oldState=$oldState newState=$state '
-        'allowExecuteTestNames=$allowExecuteTestNames executedTestSucceeded=$executedTestSucceeded');
+      _kTag,
+      'advance super run reason=$reason oldState=$oldState newState=$state '
+      'executedTestName=$executedTestName '
+      'executedTestSucceeded=$executedTestSucceeded',
+    );
 
     if (state is! ITIMStateFinished) {
       Log.d(_kTag, 'call hot restart');

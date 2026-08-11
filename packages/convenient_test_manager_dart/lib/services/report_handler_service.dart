@@ -159,6 +159,10 @@ class ReportHandlerService {
 
     _rawLogStore.rawLogInTest[testEntryId] +=
         '${request.error}\n${request.stackTrace}\n';
+    GetIt.I
+        .get<WorkerSuperRunStore>()
+        .currSuperRunController
+        .handleRunnerError(testName: request.testName);
   }
 
   Future<void> _handleRunnerMessage(RunnerMessage request) async {
