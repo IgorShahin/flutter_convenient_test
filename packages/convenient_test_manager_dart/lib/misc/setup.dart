@@ -31,6 +31,7 @@ Future<void> setup({
   bool registerHighlightStoreBase = true,
   bool registerVideoPlayerStoreBase = true,
   bool registerVmServiceWrapper = true,
+  bool startServer = true,
   // widget tests cannot handle async io, so
   // you might want to disable config parsing
   bool parseConfigFile = true,
@@ -72,10 +73,10 @@ Future<void> setup({
         : NoOpVmServiceWrapperService());
   }
 
-  if (supportsIoPlatform) {
+  if (supportsIoPlatform && startServer) {
     GetIt.I.get<ConvenientTestManagerService>().serve();
   } else {
-    Log.i('setup', 'Skip gRPC server startup on web runtime');
+    Log.i('setup', 'Skip gRPC server startup');
   }
 
   Log.i('setup', 'GlobalConfig: ${GlobalConfigStore.config}');

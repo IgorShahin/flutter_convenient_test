@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:convenient_test_common/convenient_test_common.dart';
@@ -6,15 +5,12 @@ import 'package:convenient_test_manager/stores/highlight_store.dart';
 import 'package:convenient_test_manager/stores/home_page_store.dart';
 import 'package:convenient_test_manager/stores/video_player_store.dart';
 import 'package:convenient_test_manager_dart/misc/runtime_platform.dart';
-import 'package:convenient_test_manager_dart/services/allure_report_service.dart';
 import 'package:convenient_test_manager_dart/services/misc_dart_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:get_it/get_it.dart';
-import 'package:mobx/mobx.dart';
 
 class MiscFlutterService extends MiscDartService {
   static const _kTag = 'MiscFlutterService';
-  static const _kOpenAllurePublishTimeout = Duration(seconds: 20);
 
   @override
   void reloadInfo() {
@@ -97,41 +93,5 @@ class MiscFlutterService extends MiscDartService {
       chunks.addAll(chunk);
     }
     return Uint8List.fromList(chunks);
-  }
-
-  Future<void> openAllureReportSite() async {
-    final homePageStore = GetIt.I.get<HomePageStore>();
-    final allureService = GetIt.I.get<ManagerAllureReportService>();
-    runInAction(() {
-      homePageStore.allurePublishUiState.value =
-          AllurePublishUiState.publishing;
-    });
-    try {
-      final opened = await allureService
-          .openLatestReportSite()
-          .timeout(_kOpenAllurePublishTimeout);
-      if (!opened) {
-        runInAction(() {
-          homePageStore.allurePublishUiState.value =
-              AllurePublishUiState.failed;
-        });
-        Log.w(_kTag, 'openAllureReportSite failed: report was not opened');
-        return;
-      }
-      runInAction(() {
-        homePageStore.allurePublishUiState.value =
-            AllurePublishUiState.published;
-      });
-    } on TimeoutException catch (e, s) {
-      runInAction(() {
-        homePageStore.allurePublishUiState.value = AllurePublishUiState.timeout;
-      });
-      Log.w(_kTag, 'openAllureReportSite publish timeout e=$e s=$s');
-    } catch (e, s) {
-      runInAction(() {
-        homePageStore.allurePublishUiState.value = AllurePublishUiState.failed;
-      });
-      Log.w(_kTag, 'openAllureReportSite publish failed e=$e s=$s');
-    }
   }
 }

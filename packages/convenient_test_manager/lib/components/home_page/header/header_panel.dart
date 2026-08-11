@@ -5,7 +5,6 @@ import 'package:convenient_test_manager/services/misc_flutter_service.dart';
 import 'package:convenient_test_manager/services/worker_vm_endpoint_history_service.dart';
 import 'package:convenient_test_manager/stores/highlight_store.dart';
 import 'package:convenient_test_manager/stores/home_page_store.dart';
-import 'package:convenient_test_manager_dart/misc/runtime_platform.dart';
 import 'package:convenient_test_manager_dart/services/report_saver_service.dart';
 import 'package:convenient_test_manager_dart/services/vm_service_wrapper_service.dart';
 import 'package:convenient_test_manager_dart/stores/worker_super_run_store.dart';
@@ -91,17 +90,6 @@ class HomePageHeaderPanel extends StatelessWidget {
                 onPressed: miscFlutterService.pickFileAndReadReport,
                 text: 'Load Report',
               ),
-              if (supportsIoPlatform)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _HeaderButton(
-                      onPressed: miscFlutterService.openAllureReportSite,
-                      text: 'Open Allure',
-                    ),
-                    const _AllurePublishHint(),
-                  ],
-                ),
               _HeaderButton(
                 onPressed: () =>
                     Navigator.pushNamed(context, GoldenDiffPage.kRouteName),
@@ -375,54 +363,5 @@ class _WorkerEndpointButton extends StatelessWidget {
       hostController.dispose();
       portController.dispose();
     }
-  }
-}
-
-class _AllurePublishHint extends StatelessWidget {
-  const _AllurePublishHint();
-
-  @override
-  Widget build(BuildContext context) {
-    final homePageStore = GetIt.I.get<HomePageStore>();
-    return Observer(builder: (_) {
-      final state = homePageStore.allurePublishUiState.value;
-      if (state == AllurePublishUiState.idle) {
-        return const SizedBox.shrink();
-      }
-
-      final (text, color) = switch (state) {
-        AllurePublishUiState.publishing => ('Publishing...', Colors.blue),
-        AllurePublishUiState.published => ('Published', Colors.green),
-        AllurePublishUiState.timeout => ('Publish timeout', Colors.orange),
-        AllurePublishUiState.failed => ('Publish failed', Colors.red),
-        AllurePublishUiState.idle => ('', Colors.transparent),
-      };
-      if (text.isEmpty) return const SizedBox.shrink();
-      return Padding(
-        padding: const EdgeInsets.only(left: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (state == AllurePublishUiState.publishing)
-              SizedBox(
-                width: 12,
-                height: 12,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: color,
-                ),
-              ),
-            if (state == AllurePublishUiState.publishing)
-              const SizedBox(width: 6),
-            Text(
-              text,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: color,
-                  ),
-            ),
-          ],
-        ),
-      );
-    });
   }
 }

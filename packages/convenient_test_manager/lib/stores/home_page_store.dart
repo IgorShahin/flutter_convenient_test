@@ -42,8 +42,6 @@ abstract class _HomePageStore with Store {
   @observable
   bool allureAttachmentPreviewLoading = false;
 
-  final allurePublishUiState = Observable(AllurePublishUiState.idle);
-
   Timer? _allureAttachmentPreviewTimer;
 
   @action
@@ -82,14 +80,6 @@ enum HomePageSecondaryPanelTab {
   video,
   rawLog,
   none,
-}
-
-enum AllurePublishUiState {
-  idle,
-  publishing,
-  published,
-  timeout,
-  failed,
 }
 
 extension ExtHomePageSecondaryPanelTab on HomePageSecondaryPanelTab {

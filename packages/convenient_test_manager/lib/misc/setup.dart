@@ -20,6 +20,7 @@ Future<void> setup({
   bool registerVmServiceWrapper = true,
   bool parseConfigFile = true,
   bool initVLC = true,
+  bool startServer = true,
 }) async {
   await convenient_test_manager_dart_setup.setup(
     registerMiscDartService: false,
@@ -28,6 +29,7 @@ Future<void> setup({
     registerVideoPlayerStoreBase: false,
     registerVmServiceWrapper: registerVmServiceWrapper,
     parseConfigFile: parseConfigFile,
+    startServer: startServer,
   );
 
   // Keep the parameter for API compatibility while video playback is disabled.

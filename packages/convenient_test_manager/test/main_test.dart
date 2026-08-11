@@ -15,7 +15,11 @@ import 'fake_vm_service_wrapper.dart';
 
 Future<void> setupForTesting() async {
   await setup(
-      registerVmServiceWrapper: false, initVLC: false, parseConfigFile: false);
+    registerVmServiceWrapper: false,
+    initVLC: false,
+    parseConfigFile: false,
+    startServer: false,
+  );
 
   getIt.registerSingleton<VmServiceWrapperService>(FakeVmServiceWrapper());
   getIt.get<HighlightStore>().enableAutoJump = false;
