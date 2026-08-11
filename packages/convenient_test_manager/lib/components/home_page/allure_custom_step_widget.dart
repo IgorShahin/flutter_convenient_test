@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:convenient_test_manager/components/misc/enhanced_selectable_text.dart';
 import 'package:convenient_test_manager/components/misc/state_indicator.dart';
 import 'package:convenient_test_manager/misc/protobuf_extensions.dart';
 import 'package:convenient_test_manager/stores/highlight_store.dart';
@@ -141,7 +142,7 @@ class HomePageAllureCustomStepWidget extends StatelessWidget {
                         ...node.parameters.map(
                           (parameter) => Padding(
                             padding: const EdgeInsets.only(bottom: 2),
-                            child: Text(
+                            child: EnhancedSelectableText(
                               '${parameter.name}: ${parameter.value}',
                               style: TextStyle(
                                 fontSize: 11,
