@@ -236,5 +236,11 @@ String _formatDioErrorKind(DioExceptionType type) {
       return 'CONNECTION_ERROR';
     case DioExceptionType.unknown:
       return 'UNKNOWN';
+    default:
+      // Dio may add exception kinds without a major release. Keep logging
+      // compatible with both the oldest supported and the latest Dio version.
+      return type.name
+          .replaceAllMapped(RegExp('[A-Z]'), (match) => '_${match[0]}')
+          .toUpperCase();
   }
 }
